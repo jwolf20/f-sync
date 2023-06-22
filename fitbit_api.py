@@ -123,3 +123,11 @@ def fitbit_validate_signature(request):
     signature = request.headers.get("X-Fitbit-Signature", None)
 
     return value == signature
+
+
+@fitbit_token_refresh_decorator
+def fitbit_create_subscription(subscriber_id, collection="activities"):
+    url = f"https://api.fitbit.com/1/user/{FITBIT_TOKENS['user_id']}/{collection}/apiSubscriptions/{subscriber_id}.json"
+    headers = {"Authorization": f"Bearer {FITBIT_TOKENS['access_token']}"}
+    response = requests.post(url=url, headers=headers)
+    return response

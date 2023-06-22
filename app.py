@@ -61,12 +61,13 @@ def webhook_link():
         print(request.headers)
         print(request.data)
         if fitbit_validate_signature(request):
-            upload_latest_activity()
-            return "Success", 200
+            upload_latest_activity()  # TODO: Change this action to be executed using an async task queue; Expand to allow for multiple users.
+            return "Success", 204
         else:
             return "Bad Request", 400
 
     else:
+        # TODO: Figure out how to modify verification to support additional users?  I had to manually go into my app's page and create a subscriber and get this hardcoded value.
         VERIFICATION_GOAL = (
             "6d3a00596cc20459b058a4da628690718c162fd7dc8325fd1e07f9fc22a50641"
         )
