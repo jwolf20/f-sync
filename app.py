@@ -2,6 +2,8 @@ import io
 from logging.config import dictConfig
 
 from flask import Flask, render_template, request
+
+from celery_utils import get_celery_app_instance
 from fitbit_api import *
 from strava_api import *
 
@@ -32,7 +34,11 @@ dictConfig(
     }
 )
 
+# Initialize flask app
 app = Flask(__name__)
+
+# Initialize celery app instance
+celery = get_celery_app_instance(app)
 
 
 def process_activity(log_id):
@@ -53,6 +59,7 @@ def process_activity(log_id):
     app.logger.info("A new activity is being uploaded to Strava!")
 
 
+@celery.task
 def upload_latest_activity():
     response = get_fitbit_activity_log()
     if response.status_code != 200:
@@ -91,7 +98,7 @@ def webhook_link():
         app.logger.debug(request.data)
         if fitbit_validate_signature(request):
             app.logger.debug("Received a valid notification from Fitbit.")
-            upload_latest_activity()  # TODO: Change this action to be executed using an async task queue; Expand to allow for multiple users.
+            upload_latest_activity.delay()  # TODO: Change this action to be executed using an async task queue; Expand to allow for multiple users.
             return "Success", 204
         else:
             app.logger.warning("Bad request.")
