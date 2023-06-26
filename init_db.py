@@ -12,7 +12,7 @@ conn = psycopg2.connect(
 cur = conn.cursor()
 
 # Create the User tokens table.
-cur.execute("DROP TABLE IF EXISTS user_tokens;")
+cur.execute("DROP TABLE IF EXISTS user_tokens CASCADE;")
 cur.execute(
     """CREATE TABLE user_tokens (
         fitbit_id varchar (10) PRIMARY KEY,
@@ -26,7 +26,7 @@ cur.execute(
 )
 
 # Create the User activity table.
-cur.execute("DROP TABLE IF EXISTS user_activity;")
+cur.execute("DROP TABLE IF EXISTS user_activity CASCADE;")
 cur.execute(
     """CREATE TABLE user_activity (
         fitbit_id varchar (10) PRIMARY KEY,
