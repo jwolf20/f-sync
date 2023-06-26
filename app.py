@@ -1,7 +1,10 @@
+import datetime
 import io
 from logging.config import dictConfig
+import os
 
 from flask import Flask, render_template, request
+import psycopg2
 
 from celery_utils import get_celery_app_instance
 from fitbit_api import *
@@ -41,6 +44,16 @@ app = Flask(__name__)
 celery = get_celery_app_instance(app)
 
 
+def get_db_connection():
+    conn = psycopg2.connect(
+        host="localhost",
+        database="fsync_db",
+        user=os.getenv("DB_USERNAME"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+    return conn
+
+
 def process_activity(log_id):
     tcx_response = get_fitbit_activity_tcx(log_id)
     if tcx_response.status_code != 200:
@@ -56,17 +69,21 @@ def process_activity(log_id):
         app.logger.error(
             f"Unexpected Response: {upload_response.status_code=}\n{upload_response.json()}"
         )
+        return False
     app.logger.info("A new activity is being uploaded to Strava!")
+    return True
 
 
 @celery.task
-def upload_latest_activity():
+def upload_latest_activities(
+    fitbit_id="38DXR4",
+):  # TODO: Remove this hardcoded value it should be extracted from the incoming notification data
     response = get_fitbit_activity_log()
     if response.status_code != 200:
         return  # TODO: put an appropriate error here
     # Check that the response is good
     if len(response.json()["activities"]) == 0:
-        app.logger.warning("No recent activities found!")
+        app.logger.warning("No recent Fitbit activities found!")
         return  # TODO: put an appropriate error here
 
     latest_activity = response.json()["activities"][0]
@@ -82,8 +99,38 @@ def upload_latest_activity():
         )
         return  # TODO: put an appropriate error here
 
+    # Check if this activity is an improvement over the most recent known activity
+    conn = get_db_connection()
+    latest_fitbit_timestamp = datetime.datetime.fromisoformat(
+        latest_activity["startTime"]
+    ).replace(tzinfo=None)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT fitbit_latest_activity_date FROM user_activity WHERE fitbit_id = %s",
+        (fitbit_id,),
+    )
+    sql_fitbit_timestamp_result = cur.fetchone()[0]
+
+    if latest_fitbit_timestamp == sql_fitbit_timestamp_result:
+        app.logger.debug(
+            f"There is no new activity.  The timestamp for this activity has already been seen. {latest_fitbit_timestamp=}.  The database has noted {sql_fitbit_timestamp_result=}"
+        )
+        return
+
     log_id = latest_activity["logId"]
-    process_activity(log_id=log_id)
+    upload_successful = process_activity(log_id=log_id)
+
+    # Update the database recording the new timestamp
+    if upload_successful:
+        cur.execute(
+            "UPDATE user_activity SET fitbit_latest_activity_date = %s WHERE fitbit_id = %s",
+            (latest_fitbit_timestamp, fitbit_id),
+        )
+        conn.commit()
+
+    # Close out the database connection
+    cur.close()
+    conn.close()
 
 
 @app.route("/")
@@ -98,7 +145,7 @@ def webhook_link():
         app.logger.debug(request.data)
         if fitbit_validate_signature(request):
             app.logger.debug("Received a valid notification from Fitbit.")
-            upload_latest_activity.delay()  # TODO: Change this action to be executed using an async task queue; Expand to allow for multiple users.
+            upload_latest_activities.delay()  # TODO: Change this action to be executed using an async task queue; Expand to allow for multiple users.
             return "Success", 204
         else:
             app.logger.warning("Bad request.")
