@@ -15,7 +15,7 @@ cur = conn.cursor()
 cur.execute("DROP TABLE IF EXISTS user_tokens;")
 cur.execute(
     """CREATE TABLE user_tokens (
-        fibit_id varchar (10) PRIMARY KEY,
+        fitbit_id varchar (10) PRIMARY KEY,
         fitbit_access_token varchar (400) NOT NULL,
         fitbit_refresh_token varchar (100) NOT NULL,
         strava_access_token varchar (400) NOT NULL,
