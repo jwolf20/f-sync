@@ -29,7 +29,7 @@ cur.execute(
 cur.execute("DROP TABLE IF EXISTS user_activity;")
 cur.execute(
     """CREATE TABLE user_activity (
-        fitbit_id varchar (10),
+        fitbit_id varchar (10) PRIMARY KEY,
         fitbit_latest_activity_date date NOT NULL DEFAULT date '2000-01-01',
         strava_latest_activity_date date NOT NULL DEFAULT date '2000-01-01',
         CONSTRAINT fk_fitbit_id
