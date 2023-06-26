@@ -83,7 +83,7 @@ def strava_check_upload_status(upload_id):
 
 @strava_token_refresh_decorator
 def strava_get_activity_list():
-    url = "https://www.strava.com/api/v3/athlete/activites"
+    url = "https://www.strava.com/api/v3/athlete/activities"
     headers = {"Authorization": f"Bearer {STRAVA_TOKENS['access_token']}"}
     response = requests.get(url=url, headers=headers)
 
