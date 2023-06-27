@@ -1,9 +1,6 @@
 import json
+import os
 import requests
-
-# TODO: Change app values to use environment variables.
-with open("./strava_app_config.json") as strava_app_file:
-    STRAVA_APP_CONFIG = json.load(strava_app_file)
 
 
 def load_strava_tokens(filepath="./strava_tokens.json"):
@@ -19,8 +16,8 @@ def strava_refresh_tokens():
     global STRAVA_TOKENS
     params = {
         "grant_type": "refresh_token",
-        "client_id": STRAVA_APP_CONFIG["client_id"],
-        "client_secret": STRAVA_APP_CONFIG["client_secret"],
+        "client_id": os.getenv("STRAVA_CLIENT_ID"),
+        "client_secret": os.getenv("STRAVA_CLIENT_SECRET"),
         "refresh_token": STRAVA_TOKENS["refresh_token"],
     }
 
