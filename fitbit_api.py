@@ -3,11 +3,8 @@ import datetime
 import hashlib
 import hmac
 import json
+import os
 import requests
-
-# TODO: Change app values to use environment variables.
-with open("./fitbit_app_config.json") as fitbit_app_file:
-    FITBIT_APP_CONFIG = json.load(fitbit_app_file)
 
 
 # TODO: Update token storage to use a database.
@@ -23,7 +20,7 @@ FITBIT_TOKENS = load_fitbit_tokens()
 def fitbit_refresh_tokens():
     global FITBIT_TOKENS
     basic_token = base64.urlsafe_b64encode(
-        f"{FITBIT_APP_CONFIG['client_id']}:{FITBIT_APP_CONFIG['client_secret']}".encode()
+        f"{os.getenv('FITBIT_CLIENT_ID')}:{os.getenv('FITBIT_CLIENT_SECRET')}".encode()
     ).decode()
     headers = {
         "Authorization": f"Basic {basic_token}",
@@ -31,7 +28,7 @@ def fitbit_refresh_tokens():
     }
     params = {
         "grant_type": "refresh_token",
-        "client_id": FITBIT_APP_CONFIG["client_id"],
+        "client_id": os.getenv("FITBIT_CLIENT_ID"),
         "refresh_token": FITBIT_TOKENS["refresh_token"],
     }
 
@@ -80,7 +77,7 @@ def get_fitbit_profile():
 
 @fitbit_token_refresh_decorator
 def get_fitbit_activity_tcx(log_id):
-    url = f"https://api.fitbit.com/1/user/{FITBIT_TOKENS['user_id']}/activities/{log_id}.tcx"
+    url = f"https://api.fitbit.com/1/user/-/activities/{log_id}.tcx"
     headers = {"Authorization": f"Bearer {FITBIT_TOKENS['access_token']}"}
     response = requests.get(url=url, headers=headers)
     return response
@@ -88,9 +85,7 @@ def get_fitbit_activity_tcx(log_id):
 
 @fitbit_token_refresh_decorator
 def get_fitbit_activity_log(timedelta=7, limit=5, offset=0, sort="desc"):
-    url = (
-        f"https://api.fitbit.com/1/user/{FITBIT_TOKENS['user_id']}/activities/list.json"
-    )
+    url = f"https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
         "beforeDate": (
             datetime.date.today() + datetime.timedelta(days=timedelta)
@@ -118,8 +113,11 @@ def fitbit_validate_signature(request):
         Indicates if the request should be validated or not.
     """
     body = request.data
-    key = f"{FITBIT_APP_CONFIG['client_secret']}&"
-    value = base64.b64encode(hmac.digest(key.encode(), body, hashlib.sha1)).decode()
+    value = base64.b64encode(
+        hmac.digest(
+            f"{os.getenv('FITBIT_CLIENT_SECRET')}&".encode(), body, hashlib.sha1
+        )
+    ).decode()
     signature = request.headers.get("X-Fitbit-Signature", None)
 
     return value == signature
@@ -127,7 +125,7 @@ def fitbit_validate_signature(request):
 
 @fitbit_token_refresh_decorator
 def fitbit_create_subscription(subscriber_id, collection="activities"):
-    url = f"https://api.fitbit.com/1/user/{FITBIT_TOKENS['user_id']}/{collection}/apiSubscriptions/{subscriber_id}.json"
+    url = f"https://api.fitbit.com/1/user/-/{collection}/apiSubscriptions/{subscriber_id}.json"
     headers = {"Authorization": f"Bearer {FITBIT_TOKENS['access_token']}"}
     response = requests.post(url=url, headers=headers)
     return response
