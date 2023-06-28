@@ -145,10 +145,9 @@ def index():
 @app.route("/fitbit-notifications/", methods=["GET", "POST"])
 def webhook_link():
     if request.method == "POST":
-        app.logger.debug(request.headers)
-        app.logger.debug(request.data)
         if fitbit_validate_signature(request):
             app.logger.debug("Received a valid notification from Fitbit.")
+            app.logger.debug(request.data)
             for notification in request.data:
                 if (
                     notification.get("collectionType") == "activities"
@@ -159,7 +158,9 @@ def webhook_link():
                         upload_latest_activities.delay(fitbit_id=fitbit_id)
             return "Success", 204
         else:
-            app.logger.warning("Bad request.")
+            app.logger.warning(
+                f"Bad request:\nHeaders: {request.headers}\nData: {request.data}"
+            )
             return "Bad Request", 400
 
     else:
