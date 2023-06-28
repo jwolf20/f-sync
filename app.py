@@ -75,9 +75,7 @@ def process_activity(log_id) -> bool:
 
 
 @celery.task
-def upload_latest_activities(
-    fitbit_id="38DXR4",
-):  # TODO: Remove this hardcoded value it should be extracted from the incoming notification data
+def upload_latest_activities(fitbit_id):
     app.logger.info(f"Attempting to upload new activity for {fitbit_id=}")
     response = get_fitbit_activity_log()
     if response.status_code != 200:
@@ -151,7 +149,14 @@ def webhook_link():
         app.logger.debug(request.data)
         if fitbit_validate_signature(request):
             app.logger.debug("Received a valid notification from Fitbit.")
-            upload_latest_activities.delay()  # TODO: Change this action to be executed using an async task queue; Expand to allow for multiple users.
+            for notification in request.data:
+                if (
+                    notification.get("collectionType") == "activities"
+                    and notification.get("ownerType") == "user"
+                ):
+                    fitbit_id = notification.get("ownerId")
+                    if fitbit_id is not None:
+                        upload_latest_activities.delay(fitbit_id=fitbit_id)
             return "Success", 204
         else:
             app.logger.warning("Bad request.")
