@@ -1,5 +1,6 @@
 import datetime
 import io
+import json
 from logging.config import dictConfig
 
 from flask import Flask, render_template, request
@@ -136,7 +137,8 @@ def webhook_link():
         if fitbit_validate_signature(request):
             app.logger.debug("Received a valid notification from Fitbit.")
             app.logger.debug(request.data)
-            for notification in request.data:
+            notifications = json.loads(request.data)
+            for notification in notifications:
                 if (
                     notification.get("collectionType") == "activities"
                     and notification.get("ownerType") == "user"
