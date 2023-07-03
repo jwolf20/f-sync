@@ -1,12 +1,11 @@
 import datetime
 import io
 from logging.config import dictConfig
-import os
 
 from flask import Flask, render_template, request
-import psycopg2
 
 from celery_utils import get_celery_app_instance
+from database_utils import get_db_connection
 from fitbit_api import *
 from strava_api import *
 
@@ -44,18 +43,8 @@ app = Flask(__name__)
 celery = get_celery_app_instance(app)
 
 
-def get_db_connection():
-    conn = psycopg2.connect(
-        host="localhost",
-        database="fsync_db",
-        user=os.getenv("DB_USERNAME"),
-        password=os.getenv("DB_PASSWORD"),
-    )
-    return conn
-
-
-def process_activity(log_id) -> bool:
-    tcx_response = get_fitbit_activity_tcx(log_id)
+def process_activity(log_id, fitbit_id) -> bool:
+    tcx_response = get_fitbit_activity_tcx(log_id, fitbit_id=fitbit_id)
     if tcx_response.status_code != 200:
         app.logger.error(
             f"Failed Response: {tcx_response.status_code=}\n{tcx_response.json()}"
@@ -63,7 +52,7 @@ def process_activity(log_id) -> bool:
         return False
 
     tcx_buffer = io.BytesIO(tcx_response.content)
-    upload_response = strava_activity_upload(tcx_buffer)
+    upload_response = strava_activity_upload(tcx_buffer, fitbit_id=fitbit_id)
 
     if upload_response.status_code != 201:
         app.logger.error(
@@ -77,7 +66,7 @@ def process_activity(log_id) -> bool:
 @celery.task
 def upload_latest_activities(fitbit_id):
     app.logger.info(f"Attempting to upload new activity for {fitbit_id=}")
-    response = get_fitbit_activity_log()
+    response = get_fitbit_activity_log(fitbit_id=fitbit_id)
     if response.status_code != 200:
         return  # TODO: put an appropriate error here
     # Check that the response is good
@@ -99,42 +88,41 @@ def upload_latest_activities(fitbit_id):
         return  # TODO: put an appropriate error here
 
     # Check if this activity is an improvement over the most recent known activity
-    app.logger.info("CONNECTING TO DATABASE")
-    conn = get_db_connection()
-    latest_fitbit_timestamp = datetime.datetime.fromisoformat(
-        latest_activity["startTime"]
-    ).replace(tzinfo=None)
-    app.logger.info(f"{latest_fitbit_timestamp=}")
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT fitbit_latest_activity_date FROM user_activity WHERE fitbit_id = %s",
-        (fitbit_id,),
-    )
-    sql_fitbit_timestamp_result = cur.fetchone()[0]
-    app.logger.info(f"{sql_fitbit_timestamp_result=}")
+    app.logger.debug("Connecting to database")
+    with get_db_connection() as conn:
+        latest_fitbit_timestamp = datetime.datetime.fromisoformat(
+            latest_activity["startTime"]
+        ).replace(tzinfo=None)
+        app.logger.debug(f"{latest_fitbit_timestamp=}")
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT fitbit_latest_activity_date FROM user_activity WHERE fitbit_id = %s",
+                (fitbit_id,),
+            )
+            sql_fitbit_timestamp_result = cur.fetchone()[0]
+            app.logger.debug(f"{sql_fitbit_timestamp_result=}")
 
-    if latest_fitbit_timestamp == sql_fitbit_timestamp_result:
-        app.logger.info(
-            f"There is no new activity.  The timestamp for this activity has already been seen. {latest_fitbit_timestamp=}.  The database has noted {sql_fitbit_timestamp_result=}"
-        )
-        return
+            if latest_fitbit_timestamp == sql_fitbit_timestamp_result:
+                app.logger.info(
+                    f"There is no new activity for user with {fitbit_id=}.  The timestamp for this activity has already been seen {latest_fitbit_timestamp=}.  The database has noted {sql_fitbit_timestamp_result=}"
+                )
+                return
 
-    log_id = latest_activity["logId"]
-    app.logger.info(f"Uploading activity {log_id=}")
-    upload_successful = process_activity(log_id=log_id)
-    app.logger.info(f"{upload_successful=}")
+            log_id = latest_activity["logId"]
+            app.logger.info(f"Uploading activity {log_id=}")
+            upload_successful = process_activity(log_id=log_id, fitbit_id=fitbit_id)
+            app.logger.info(f"{upload_successful=}")
 
-    # Update the database recording the new timestamp
-    if upload_successful:
-        cur.execute(
-            "UPDATE user_activity SET fitbit_latest_activity_date = %s WHERE fitbit_id = %s",
-            (latest_fitbit_timestamp, fitbit_id),
-        )
-        conn.commit()
-
-    # Close out the database connection
-    cur.close()
-    conn.close()
+            # Update the database recording the new timestamp
+            if upload_successful:
+                app.logger.debug(
+                    f"Updating database activity records for {fitbit_id=}."
+                )
+                cur.execute(
+                    "UPDATE user_activity SET fitbit_latest_activity_date = %s WHERE fitbit_id = %s",
+                    (latest_fitbit_timestamp, fitbit_id),
+                )
+                conn.commit()
 
 
 @app.route("/")

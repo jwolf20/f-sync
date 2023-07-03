@@ -2,23 +2,48 @@ import base64
 import datetime
 import hashlib
 import hmac
-import json
 import os
 import requests
 
-
-# TODO: Update token storage to use a database.
-def load_fitbit_tokens(filepath="./fitbit_tokens.json"):
-    with open(filepath) as fitbit_token_file:
-        tokens = json.load(fitbit_token_file)
-    return tokens
+from database_utils import get_db_connection
 
 
-FITBIT_TOKENS = load_fitbit_tokens()
+def get_fitbit_access_token(fitbit_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT fitbit_access_token FROM user_tokens WHERE fitbit_id = %s",
+                (fitbit_id,),
+            )
+            access_token = cur.fetchone()[0]
+    return access_token
 
 
-def fitbit_refresh_tokens():
-    global FITBIT_TOKENS
+def get_fitbit_refresh_token(fitbit_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT fitbit_refresh_token FROM user_tokens WHERE fitbit_id = %s",
+                (fitbit_id,),
+            )
+            refresh_token = cur.fetchone()[0]
+    return refresh_token
+
+
+def update_fitbit_tokens(token_data, fitbit_id):
+    new_access_token = token_data["access_token"]
+    new_refresh_token = token_data["refresh_token"]
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE user_tokens SET fitbit_access_token = %s, fitbit_refresh_token = %s, fitbit_data_refreshed = CURRENT_TIMESTAMP WHERE fitbit_id = %s",
+                (new_access_token, new_refresh_token, fitbit_id),
+            )
+        conn.commit()
+
+
+def fitbit_refresh_tokens(fitbit_id):
+    refresh_token = get_fitbit_refresh_token(fitbit_id)
     basic_token = base64.urlsafe_b64encode(
         f"{os.getenv('FITBIT_CLIENT_ID')}:{os.getenv('FITBIT_CLIENT_SECRET')}".encode()
     ).decode()
@@ -29,7 +54,7 @@ def fitbit_refresh_tokens():
     params = {
         "grant_type": "refresh_token",
         "client_id": os.getenv("FITBIT_CLIENT_ID"),
-        "refresh_token": FITBIT_TOKENS["refresh_token"],
+        "refresh_token": refresh_token,
     }
 
     response = requests.post(
@@ -39,11 +64,7 @@ def fitbit_refresh_tokens():
     # Store the new tokens
     if response.status_code == 200:
         # TODO: remove hardcoded filepath
-        with open("./fitbit_tokens.json", "w") as fitbit_token_file:
-            json.dump(response.json(), fitbit_token_file)
-
-        # Refresh the tokens object
-        FITBIT_TOKENS = load_fitbit_tokens()
+        update_fitbit_tokens(response.json(), fitbit_id)
 
     else:
         print(response.status_code)
@@ -57,7 +78,8 @@ def fitbit_token_refresh_decorator(api_call):
 
         # Check if tokens need to be refreshed
         if response.status_code == 401:
-            fitbit_refresh_tokens()
+            fitbit_id = kwargs["fitbit_id"]
+            fitbit_refresh_tokens(fitbit_id)
 
             # Resubmit the response
             response = api_call(*args, **kwargs)
@@ -68,23 +90,26 @@ def fitbit_token_refresh_decorator(api_call):
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_profile():
+def get_fitbit_profile(*, fitbit_id):
+    access_token = get_fitbit_access_token(fitbit_id)
     url = "https://api.fitbit.com/1/user/-/profile.json"
-    headers = {"Authorization": f"Bearer {FITBIT_TOKENS['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(url=url, headers=headers)
     return response
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_activity_tcx(log_id):
+def get_fitbit_activity_tcx(log_id, *, fitbit_id):
+    access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/{log_id}.tcx"
-    headers = {"Authorization": f"Bearer {FITBIT_TOKENS['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(url=url, headers=headers)
     return response
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_activity_log(timedelta=7, limit=5, offset=0, sort="desc"):
+def get_fitbit_activity_log(timedelta=7, limit=5, offset=0, sort="desc", *, fitbit_id):
+    access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
         "beforeDate": (
@@ -94,7 +119,7 @@ def get_fitbit_activity_log(timedelta=7, limit=5, offset=0, sort="desc"):
         "offset": offset,
         "sort": sort,
     }
-    headers = {"Authorization": f"Bearer {FITBIT_TOKENS['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(url=url, headers=headers, params=params)
     return response
 
@@ -124,8 +149,9 @@ def fitbit_validate_signature(request):
 
 
 @fitbit_token_refresh_decorator
-def fitbit_create_subscription(subscriber_id, collection="activities"):
+def fitbit_create_subscription(subscriber_id, collection="activities", *, fitbit_id):
+    access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/{collection}/apiSubscriptions/{subscriber_id}.json"
-    headers = {"Authorization": f"Bearer {FITBIT_TOKENS['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.post(url=url, headers=headers)
     return response

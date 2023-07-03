@@ -1,24 +1,50 @@
-import json
 import os
 import requests
 
-
-def load_strava_tokens(filepath="./strava_tokens.json"):
-    with open(filepath) as strava_tokens_file:
-        tokens = json.load(strava_tokens_file)
-    return tokens
+from database_utils import get_db_connection
 
 
-STRAVA_TOKENS = load_strava_tokens()
+def get_strava_access_token(fitbit_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT strava_access_token FROM user_tokens WHERE fitbit_id = %s",
+                (fitbit_id,),
+            )
+            access_token = cur.fetchone()[0]
+    return access_token
 
 
-def strava_refresh_tokens():
-    global STRAVA_TOKENS
+def get_strava_refresh_token(fitbit_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT strava_refresh_token FROM user_tokens WHERE fitbit_id = %s",
+                (fitbit_id,),
+            )
+            refresh_token = cur.fetchone()[0]
+    return refresh_token
+
+
+def update_strava_tokens(token_data, fitbit_id):
+    new_access_token = token_data["access_token"]
+    new_refresh_token = token_data["refresh_token"]
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE user_tokens SET strava_access_token = %s, strava_refresh_token = %s, strava_data_refreshed = CURRENT_TIMESTAMP WHERE fitbit_id = %s",
+                (new_access_token, new_refresh_token, fitbit_id),
+            )
+        conn.commit()
+
+
+def strava_refresh_tokens(fitbit_id):
+    refresh_token = get_strava_refresh_token(fitbit_id)
     params = {
         "grant_type": "refresh_token",
         "client_id": os.getenv("STRAVA_CLIENT_ID"),
         "client_secret": os.getenv("STRAVA_CLIENT_SECRET"),
-        "refresh_token": STRAVA_TOKENS["refresh_token"],
+        "refresh_token": refresh_token,
     }
 
     response = requests.post(
@@ -27,12 +53,7 @@ def strava_refresh_tokens():
 
     # Store the new tokens
     if response.status_code == 200:
-        # TODO: remove hardcoded filepath
-        with open("./strava_tokens.json", "w") as strava_tokens_file:
-            json.dump(response.json(), strava_tokens_file)
-
-        # Refresh the tokens object
-        STRAVA_TOKENS = load_strava_tokens()
+        update_strava_tokens(response.json(), fitbit_id)
 
     else:
         print(response.status_code)
@@ -46,7 +67,8 @@ def strava_token_refresh_decorator(api_call):
 
         # Check if tokens need to be refreshed
         if response.status_code == 401:
-            strava_refresh_tokens()
+            fitbit_id = kwargs["fitbit_id"]
+            strava_refresh_tokens(fitbit_id)
 
             # Resubmit the response
             response = api_call(*args, **kwargs)
@@ -57,10 +79,11 @@ def strava_token_refresh_decorator(api_call):
 
 
 @strava_token_refresh_decorator
-def strava_activity_upload(file_buffer):
+def strava_activity_upload(file_buffer, *, fitbit_id):
+    access_token = get_strava_access_token(fitbit_id)
     file_buffer.seek(0)
     url = "https://www.strava.com/api/v3/uploads"
-    headers = {"Authorization": f"Bearer {STRAVA_TOKENS['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token}"}
     params = {"data_type": "tcx"}
     files = {"file": file_buffer}
 
@@ -70,18 +93,20 @@ def strava_activity_upload(file_buffer):
 
 
 @strava_token_refresh_decorator
-def strava_check_upload_status(upload_id):
+def strava_check_upload_status(upload_id, *, fitbit_id):
+    access_token = get_strava_access_token(fitbit_id)
     url = f"https://www.strava.com/api/v3/uploads/{upload_id}"
-    headers = {"Authorization": f"Bearer {STRAVA_TOKENS['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(url=url, headers=headers)
 
     return response
 
 
 @strava_token_refresh_decorator
-def strava_get_activity_list():
+def strava_get_activity_list(*, fitbit_id):
+    access_token = get_strava_access_token(fitbit_id)
     url = "https://www.strava.com/api/v3/athlete/activities"
-    headers = {"Authorization": f"Bearer {STRAVA_TOKENS['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(url=url, headers=headers)
 
     return response
