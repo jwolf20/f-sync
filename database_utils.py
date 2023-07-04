@@ -1,9 +1,9 @@
 from contextlib import contextmanager
 import os
 
-import psycopg2
+from psycopg2.pool import ThreadedConnectionPool
 
-db_connection_pool = psycopg2.pool.ThreadedConnectionPool(
+db_connection_pool = ThreadedConnectionPool(
     minconn=1,
     maxconn=15,
     host=os.getenv("DB_HOST"),
