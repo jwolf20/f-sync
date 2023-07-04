@@ -3,7 +3,7 @@ import os
 
 import psycopg2
 
-db_connection_pool = psycopg2.ThreadedConnectionPool(
+db_connection_pool = psycopg2.pool.ThreadedConnectionPool(
     minconn=1,
     maxconn=15,
     host=os.getenv("DB_HOST"),
