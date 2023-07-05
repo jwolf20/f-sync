@@ -51,6 +51,7 @@ dictConfig(
 
 # Initialize flask app
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY")
 
 # Initialize celery app instance
 celery = get_celery_app_instance(app)
