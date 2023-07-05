@@ -180,7 +180,7 @@ def webhook_link():
 
 # OAUTH section
 # This section contains the code necessary to interact with Oauth allowing users to register for the application.
-@app.rout("/auth/success")
+@app.route("/auth/success")
 def auth_success():
     return render_template("auth_success.html")
 
