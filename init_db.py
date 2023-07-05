@@ -17,10 +17,10 @@ def reset_db():
         cur.execute(
             """CREATE TABLE user_tokens (
                 fitbit_id varchar (10) PRIMARY KEY,
-                fitbit_access_token varchar (400) NOT NULL,
-                fitbit_refresh_token varchar (100) NOT NULL,
-                strava_access_token varchar (400) NOT NULL,
-                strava_refresh_token varchar (100) NOT NULL,
+                fitbit_access_token varchar (400),
+                fitbit_refresh_token varchar (100),
+                strava_access_token varchar (400),
+                strava_refresh_token varchar (100),
                 date_added timestamp DEFAULT CURRENT_TIMESTAMP,
                 fitbit_date_refreshed timestamp DEFAULT CURRENT_TIMESTAMP,
                 strava_data_refreshed timestamp DEFAULT CURRENT_TIMESTAMP);"""
