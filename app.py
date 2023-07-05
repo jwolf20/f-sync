@@ -167,12 +167,8 @@ def webhook_link():
             return "Bad Request", 400
 
     else:
-        # TODO: Figure out how to modify verification to support additional users?  I had to manually go into my app's page and create a subscriber and get this hardcoded value.
-        VERIFICATION_GOAL = (
-            "6d3a00596cc20459b058a4da628690718c162fd7dc8325fd1e07f9fc22a50641"
-        )
         verification_code = request.args.get("verify")
-        if verification_code == VERIFICATION_GOAL:
+        if verification_code == os.getenv("FITBIT_SUBSCRIPTION_VERIFICATION_CODE"):
             app.logger.info(f"Successful verification of {verification_code}")
             return "Success", 204
         else:

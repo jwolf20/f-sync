@@ -5,8 +5,8 @@ import psycopg2
 
 def reset_db():
     conn = psycopg2.connect(
-        host="localhost",
-        database="fsync_db",
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
         user=os.getenv("DB_USERNAME"),
         password=os.getenv("DB_PASSWORD"),
     )
