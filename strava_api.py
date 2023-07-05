@@ -32,7 +32,7 @@ def update_strava_tokens(token_data, fitbit_id):
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE user_tokens SET strava_access_token = %s, strava_refresh_token = %s, strava_data_refreshed = CURRENT_TIMESTAMP WHERE fitbit_id = %s",
+                "UPDATE user_tokens SET strava_access_token = %s, strava_refresh_token = %s, strava_date_refreshed = CURRENT_TIMESTAMP WHERE fitbit_id = %s",
                 (new_access_token, new_refresh_token, fitbit_id),
             )
         conn.commit()

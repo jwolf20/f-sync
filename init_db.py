@@ -23,7 +23,7 @@ def reset_db():
                 strava_refresh_token varchar (100),
                 date_added timestamp DEFAULT CURRENT_TIMESTAMP,
                 fitbit_date_refreshed timestamp DEFAULT CURRENT_TIMESTAMP,
-                strava_data_refreshed timestamp DEFAULT CURRENT_TIMESTAMP);"""
+                strava_date_refreshed timestamp DEFAULT CURRENT_TIMESTAMP);"""
         )
 
         # Create the User activity table.
