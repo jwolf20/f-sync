@@ -63,7 +63,6 @@ def fitbit_refresh_tokens(fitbit_id):
 
     # Store the new tokens
     if response.status_code == 200:
-        # TODO: remove hardcoded filepath
         update_fitbit_tokens(response.json(), fitbit_id)
 
     else:
@@ -149,7 +148,7 @@ def fitbit_validate_signature(request):
 
 
 @fitbit_token_refresh_decorator
-def fitbit_create_subscription(subscriber_id, collection="activities", *, fitbit_id):
+def fitbit_webhook_subscribe(subscriber_id, collection="activities", *, fitbit_id):
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/{collection}/apiSubscriptions/{subscriber_id}.json"
     headers = {"Authorization": f"Bearer {access_token}"}
