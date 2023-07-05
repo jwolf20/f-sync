@@ -186,23 +186,21 @@ def auth_success():
     return render_template("auth_success.html")
 
 
-def generate_pkce_code():
-    random_token = secrets.token_urlsafe(90)
-    sha256_hash = hashlib.sha256(random_token.encode()).digest()
-    pkce_code = base64.urlsafe_b64encode(sha256_hash).rstrip(b"=").decode()
-    return pkce_code
-
-
 @app.route("/auth/fitbit")
 def fitbit_oauth():
-    session["pkce_code"] = generate_pkce_code()
+    session["pkce_code"] = secrets.token_urlsafe(90)
+    code_challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(session["pkce_code"].encode()).digest())
+        .rstrip(b"=")
+        .decode()
+    )
     session["oauth2_fitbit_state"] = secrets.token_urlsafe(20)
     param_string = urlencode(
         {
             "response_type": "code",
             "client_id": os.getenv("FITBIT_CLIENT_ID"),
             "scope": "activity",
-            "code_challenge": session["pkce_code"],
+            "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "state": session["oauth2_fitbit_state"],
             "redirect_uri": os.getenv("FITBIT_REDIRECT_URI"),
