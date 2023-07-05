@@ -61,7 +61,7 @@ def process_activity(log_id, fitbit_id) -> bool:
     tcx_response = get_fitbit_activity_tcx(log_id, fitbit_id=fitbit_id)
     if tcx_response.status_code != 200:
         app.logger.error(
-            f"Failed Response: {tcx_response.status_code=}\n{tcx_response.json()}"
+            f"Failed Response: {tcx_response.status_code=}\n{tcx_response.content}"
         )
         return False
 
@@ -199,7 +199,7 @@ def fitbit_oauth():
         {
             "response_type": "code",
             "client_id": os.getenv("FITBIT_CLIENT_ID"),
-            "scope": "activity",
+            "scope": "activity+location",
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "state": session["oauth2_fitbit_state"],
