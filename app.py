@@ -222,12 +222,19 @@ def fitbit_oauth_verify():
         return redirect(url_for("index"))
 
     if request.args["state"] != session.get("oauth2_fitbit_state"):
+        app.logger.error(
+            f"Unauthorized Access! Request sent state value of {request.args.get('state')} compared to session state value of {session.get('oauth2_fitbit_state')}"
+        )
         abort(401)
 
     if session.get("pkce_code") is None:
+        app.logger.error("Unauthorized Access!  pkce_code is missing from session.")
         abort(401)
 
     if "code" not in request.args:
+        app.logger.error(
+            "Unauthorized Access!  code parameter missing from request arguments."
+        )
         abort(401)
 
     # Submit request for tokens
@@ -257,6 +264,9 @@ def fitbit_oauth_verify():
 
     # Verify request is successful
     if response.status_code != 200:
+        app.logger.error(
+            f"Token exchange request failed with status_code: {response.status_code}.  Response json: {response.json()}"
+        )
         abort(401)
 
     access_token = response.json().get("access_token")
