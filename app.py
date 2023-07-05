@@ -199,7 +199,7 @@ def fitbit_oauth():
         {
             "response_type": "code",
             "client_id": os.getenv("FITBIT_CLIENT_ID"),
-            "scope": "activity+location",
+            "scope": "activity location",
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "state": session["oauth2_fitbit_state"],
