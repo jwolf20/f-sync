@@ -123,6 +123,58 @@ def get_fitbit_activity_log(timedelta=7, limit=5, offset=0, sort="desc", *, fitb
     return response
 
 
+@fitbit_token_refresh_decorator
+def get_fitbit_most_recent_activity(*, fitbit_id):
+    access_token = get_fitbit_access_token(fitbit_id)
+    url = f"https://api.fitbit.com/1/user/-/activities/list.json"
+    params = {
+        "beforeDate": (
+            datetime.date.today() + datetime.timedelta(days=5)
+        ).isoformat(),  # NOTE: Using a date that is after today in order to make sure we are provided the most recent activity.
+        "limit": 1,
+        "offset": 0,
+        "sort": "desc",
+    }
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(url=url, headers=headers, params=params)
+    return response
+
+
+@fitbit_token_refresh_decorator
+def get_fitbit_activities_after_date(after_date, limit=100, offset=0, *, fitbit_id):
+    """Submit an API request for the users activities after a specified date.
+    The activities are returned sorted by date in ascending order.
+
+    Parameters
+    ----------
+    after_date : str
+        Must be a string in yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss format.  Only the yyyy-MM-dd portion
+        is used in filtering results.
+    fitbit_id : str
+        The Fitbit ID for the user related to this request.
+    limit : int, optional
+        The number of activities returned (max value: 100), by default 100
+    offset : int, optional
+        Used for pagination adjustments, by default 0
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    access_token = get_fitbit_access_token(fitbit_id)
+    url = f"https://api.fitbit.com/1/user/-/activities/list.json"
+    params = {
+        "afterDate": after_date,
+        "limit": limit,
+        "offset": offset,
+        "sort": "asc",
+    }
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(url=url, headers=headers, params=params)
+    return response
+
+
 def fitbit_validate_signature(request):
     """Follow the verification best practices as outlined in https://dev.fitbit.com/build/reference/web-api/developer-guide/best-practices/#Subscriber-Security
 
