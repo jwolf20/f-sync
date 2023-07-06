@@ -150,15 +150,17 @@ def webhook_link():
         if fitbit_validate_signature(request):
             app.logger.debug("Received a valid notification from Fitbit.")
             app.logger.debug(request.data)
-            notifications = json.loads(request.data)
-            for notification in notifications:
-                if (
-                    notification.get("collectionType") == "activities"
-                    and notification.get("ownerType") == "user"
-                ):
-                    fitbit_id = notification.get("ownerId")
-                    if fitbit_id is not None:
-                        upload_latest_activities.delay(fitbit_id=fitbit_id)
+            messages = json.loads(request.data)
+            # NOTE: Use a set to guarantee only one execution per user ID in the notification; A single notification can contain multiple messages related to same Fitbit ID.
+            notification_ids = set(
+                message.get("ownerID")
+                for message in messages
+                if message.get("collectionType") == "activities"
+                and message.get("ownerType") == "user"
+            )
+            for fitbit_id in notification_ids:
+                if fitbit_id is not None:
+                    upload_latest_activities.delay(fitbit_id=fitbit_id)
             return "Success", 204
         else:
             app.logger.warning(
