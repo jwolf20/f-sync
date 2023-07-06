@@ -148,8 +148,8 @@ def get_fitbit_activities_after_date(after_date, limit=100, offset=0, *, fitbit_
     Parameters
     ----------
     after_date : str
-        Must be a string in yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss format.  Only the yyyy-MM-dd portion
-        is used in filtering results.
+        Must be a string in yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss format.  The yyyy-MM-dd portion is required, however the timestamp version
+        can be used to filter results using finer granularity.
     fitbit_id : str
         The Fitbit ID for the user related to this request.
     limit : int, optional

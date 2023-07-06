@@ -73,43 +73,36 @@ def process_activity(log_id, fitbit_id) -> bool:
             f"Unexpected Response: {upload_response.status_code=}\n{upload_response.content}"
         )
         return False
-    app.logger.info("A new activity is being uploaded to Strava!")
+    app.logger.info(
+        f"A new activity is being uploaded to Strava! For user {fitbit_id=}; activity {log_id=}."
+    )
     return True
 
 
 @celery.task
 def upload_latest_activities(fitbit_id):
     app.logger.info(f"Attempting to upload new activities for {fitbit_id=}")
-    response = get_fitbit_activity_log(fitbit_id=fitbit_id)
+
+    # Look at the latest Fitbit activity
+    fitbit_response = get_fitbit_most_recent_activity(fitbit_id=fitbit_id)
     # Check that the API request was successful
-    if response.status_code != 200:
+    if fitbit_response.status_code != 200:
         app.logger.error(
-            f"Unable to Access Fitbit API for latest activity! User {fitbit_id=}, {response.status_code=},\n {response.content=}"
+            f"Unable to access Fitbit API for latest activity! User {fitbit_id=}, {fitbit_response.status_code=},\n {fitbit_response.content=}"
         )
         return
     # Check that the response is not empty
-    if len(response.json()["activities"]) == 0:
+    if len(fitbit_response.json()["activities"]) == 0:
         app.logger.warning("No recent Fitbit activities found!")
         return
 
-    latest_activity = response.json()["activities"][0]
-    if latest_activity["logType"] != "tracker":
-        app.logger.warning(
-            "Latest activity was not recorded by a tracker (likely a manual upload without GPS data)"
-        )
-        return
+    latest_fitbit_activity = fitbit_response.json()["activities"][0]
 
-    if latest_activity["activityName"].lower() not in ("run", "hike", "bike", "walk"):
-        app.logger.error(
-            f"Unsupported type for latest activity: {latest_activity['activityName']}."
-        )
-        return
-
-    # Check if this activity is an improvement over the most recent known activity
+    # Check if the activity is more recent that the last successful upload by this application.
     app.logger.debug("Connecting to database")
     with get_db_connection() as conn:
         latest_fitbit_timestamp = datetime.datetime.fromisoformat(
-            latest_activity["startTime"]
+            latest_fitbit_activity["startTime"]
         ).replace(tzinfo=None)
         app.logger.debug(f"{latest_fitbit_timestamp=}")
         with conn.cursor() as cur:
@@ -126,13 +119,70 @@ def upload_latest_activities(fitbit_id):
                 )
                 return
 
-            log_id = latest_activity["logId"]
-            app.logger.info(f"Uploading activity {log_id=}")
-            upload_successful = process_activity(log_id=log_id, fitbit_id=fitbit_id)
-            app.logger.info(f"{upload_successful=}")
+            # Check the most recent Strava activity
+            strava_response = get_strava_most_recent_activity(fitbit_id=fitbit_id)
+            if strava_response.status_code != 200:
+                app.logger.error(
+                    f"Unable to access Strava API for latest activity! User {fitbit_id=}, {strava_response.status_code=},\n {strava_response.content=}"
+                )
+                return
+
+            if len(strava_response.json()) == 0:
+                app.logger.warning(
+                    "No recent Strava activities found! Continuing use default date of 2010-01-01."
+                )
+                latest_strava_date = "2010-01-01"
+            else:
+                latest_strava_date = strava_response.json()[0]["start_date"].rstrip(
+                    "Z"
+                )  # NOTE: Strava timestamps include an extra Z character at the end.
+
+            # Get the collection of Fitbit activities that occurred after the most recent Strava activity.
+            fitbit_activities_response = get_fitbit_activities_after_date(
+                latest_strava_date, fitbit_id=fitbit_id
+            )
+
+            if fitbit_activities_response.status_code != 200:
+                app.logger.error(
+                    f"Unable to access Fitbit API for recent activities! User {fitbit_id=}, {fitbit_activities_response.status_code=},\n {fitbit_activities_response.content=}"
+                )
+                return
+
+            successful_fitbit_upload_date = None
+
+            # Loop through the new activities attempting to upload them to Strava
+            for activity in fitbit_activities_response.json()["activities"]:
+                log_id = activity["logId"]
+                if activity["logType"] != "tracker":
+                    app.logger.warning(
+                        f"Encountered Fitbit activity that was not recorded by a tracker.  This is likely either a manual upload without GPS data or an auto-detected activity. Activity in question has {fitbit_id=}, {log_id=}."
+                    )
+                    continue
+
+                if activity["activityName"].lower() not in (
+                    "run",
+                    "hike",
+                    "bike",
+                    "walk",
+                ):
+                    app.logger.error(
+                        f"Encountered Fitbit activity with unsupported Type: {activity['activityName']}. Activity in question has {fitbit_id=}, {log_id=}."
+                    )
+                    continue
+
+                app.logger.info(
+                    f"Uploading a new activity for user {fitbit_id=} with {log_id=}."
+                )
+                upload_successful = process_activity(log_id=log_id, fitbit_id=fitbit_id)
+                app.logger.debug(f"{upload_successful=}")
+
+                if upload_successful:
+                    successful_fitbit_upload_date = datetime.datetime.fromisoformat(
+                        activity["startTime"]
+                    ).replace(tzinfo=None)
 
             # Update the database recording the new timestamp
-            if upload_successful:
+            if successful_fitbit_upload_date is not None:
                 app.logger.debug(
                     f"Updating database activity records for {fitbit_id=}."
                 )

@@ -110,3 +110,16 @@ def strava_get_activity_list(*, fitbit_id):
     response = requests.get(url=url, headers=headers)
 
     return response
+
+
+@strava_token_refresh_decorator
+def get_strava_most_recent_activity(*, fitbit_id):
+    access_token = get_strava_access_token(fitbit_id)
+    url = "https://www.strava.com/api/v3/athlete/activities"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {
+        "per_page": 1,
+    }
+    response = requests.get(url=url, headers=headers, params=params)
+
+    return response
