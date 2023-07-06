@@ -70,7 +70,7 @@ def process_activity(log_id, fitbit_id) -> bool:
 
     if upload_response.status_code != 201:
         app.logger.error(
-            f"Unexpected Response: {upload_response.status_code=}\n{upload_response.json()}"
+            f"Unexpected Response: {upload_response.status_code=}\n{upload_response.content}"
         )
         return False
     app.logger.info("A new activity is being uploaded to Strava!")
@@ -79,27 +79,31 @@ def process_activity(log_id, fitbit_id) -> bool:
 
 @celery.task
 def upload_latest_activities(fitbit_id):
-    app.logger.info(f"Attempting to upload new activity for {fitbit_id=}")
+    app.logger.info(f"Attempting to upload new activities for {fitbit_id=}")
     response = get_fitbit_activity_log(fitbit_id=fitbit_id)
+    # Check that the API request was successful
     if response.status_code != 200:
-        return  # TODO: put an appropriate error here
-    # Check that the response is good
+        app.logger.error(
+            f"Unable to Access Fitbit API for latest activity! User {fitbit_id=}, {response.status_code=},\n {response.content=}"
+        )
+        return
+    # Check that the response is not empty
     if len(response.json()["activities"]) == 0:
         app.logger.warning("No recent Fitbit activities found!")
-        return  # TODO: put an appropriate error here
+        return
 
     latest_activity = response.json()["activities"][0]
     if latest_activity["logType"] != "tracker":
         app.logger.warning(
             "Latest activity was not recorded by a tracker (likely a manual upload without GPS data)"
         )
-        return  # TODO: put an appropriate error here
+        return
 
-    if latest_activity["activityName"].lower() not in ("run", "hike"):
+    if latest_activity["activityName"].lower() not in ("run", "hike", "bike", "walk"):
         app.logger.error(
             f"Unsupported type for latest activity: {latest_activity['activityName']}."
         )
-        return  # TODO: put an appropriate error here
+        return
 
     # Check if this activity is an improvement over the most recent known activity
     app.logger.debug("Connecting to database")
@@ -217,19 +221,21 @@ def fitbit_oauth_verify():
                 flash(f"{k}: {v}")
         return redirect(url_for("index"))
 
-    if request.args["state"] != session.get("oauth2_fitbit_state"):
+    if session.get("oauth2_fitbit_state") is None or request.args[
+        "state"
+    ] != session.get("oauth2_fitbit_state"):
         app.logger.error(
             f"Unauthorized Access! Request sent state value of {request.args.get('state')} compared to session state value of {session.get('oauth2_fitbit_state')}"
         )
         abort(401)
 
     if session.get("pkce_code") is None:
-        app.logger.error("Unauthorized Access!  pkce_code is missing from session.")
+        app.logger.error("Unauthorized Access!  `pkce_code` is missing from session.")
         abort(401)
 
     if "code" not in request.args:
         app.logger.error(
-            "Unauthorized Access!  code parameter missing from request arguments."
+            f"Unauthorized Access!  `code` parameter missing from Fitbit request arguments. Request arguments {request.args}"
         )
         abort(401)
 
@@ -261,20 +267,29 @@ def fitbit_oauth_verify():
     # Verify request is successful
     if response.status_code != 200:
         app.logger.error(
-            f"Token exchange request failed with status_code: {response.status_code}.  Response json: {response.json()}"
+            f"Fitbit token exchange request failed with status_code: {response.status_code}.  Response json: {response.content}"
         )
         abort(401)
 
     access_token = response.json().get("access_token")
     if not access_token:
+        app.logger.error(
+            f"Unauthorized Access! `access_token` missing from Fitbit response.  Response content: {response.content}"
+        )
         abort(401)
 
     refresh_token = response.json().get("refresh_token")
     if not refresh_token:
+        app.logger.error(
+            f"Unauthorized Access! `refresh_token` missing from Fitbit response.  Response content: {response.content}"
+        )
         abort(401)
 
     fitbit_id = response.json().get("user_id")
     if not fitbit_id:
+        app.logger.error(
+            f"Unauthorized Access! `user_id` missing from Fitbit response.  Response content: {response.content}"
+        )
         abort(401)
 
     # TODO: Check that user provided appropriate scope access
@@ -283,7 +298,7 @@ def fitbit_oauth_verify():
     # Add user to database
     user_added = database_create_user(fitbit_id=fitbit_id)
     if user_added:
-        app.logger.info(f"Added New User to the database with{fitbit_id=}")
+        app.logger.info(f"Added new user to the database with {fitbit_id=}")
     else:
         app.logger.warning(
             f"User with {fitbit_id=} has re-registered for the application."
@@ -298,10 +313,16 @@ def fitbit_oauth_verify():
 def strava_oauth(fitbit_id):
     # Used to check that the request is coming from a redirect
     if session.get("oauth2_fitbit_state") is None:
+        app.logger.error(
+            f"Unauthorized Access! `oauth2_fitbit_state` missing from session."
+        )
         abort(401)
 
     # Verify user is valid
     if not database_user_check(fitbit_id=fitbit_id):
+        app.logger.error(
+            f"Unauthorized Access! User with {fitbit_id=} is not located in the database."
+        )
         abort(401)
 
     # Generate a new state token
@@ -329,10 +350,18 @@ def strava_oauth_verify():
                 flash(f"{k}: {v}")
         return redirect(url_for("index"))
 
-    if request.args["state"] != session.get("oauth2_strava_state"):
+    if session.get("oauth2_strava_state") is None or request.args[
+        "state"
+    ] != session.get("oauth2_strava_state"):
+        app.logger.error(
+            f"Unauthorized Access! Request sent state value of {request.args.get('state')} compared to session state value of {session.get('oauth2_strava_state')}"
+        )
         abort(401)
 
     if "code" not in request.args:
+        app.logger.error(
+            f"Unauthorized Access!  `code` parameter missing from Strava request arguments. Request arguments {request.args}"
+        )
         abort(401)
 
     fitbit_id, *_ = session.get("oauth2_strava_state").split("_")
@@ -352,14 +381,23 @@ def strava_oauth_verify():
 
     # Verify request is successful
     if response.status_code != 200:
+        app.logger.error(
+            f"Strava token exchange request failed with status_code: {response.status_code}.  Response json: {response.content}"
+        )
         abort(401)
 
     access_token = response.json().get("access_token")
     if not access_token:
+        app.logger.error(
+            f"Unauthorized Access! `access_token` missing from Strava response.  Response content: {response.content}"
+        )
         abort(401)
 
     refresh_token = response.json().get("refresh_token")
     if not refresh_token:
+        app.logger.error(
+            f"Unauthorized Access! `refresh_token` missing from Strava response.  Response content: {response.content}"
+        )
         abort(401)
 
     # Add tokens to the database
@@ -368,17 +406,17 @@ def strava_oauth_verify():
     # Add user to webhook endpoint subscription
     response = fitbit_webhook_subscribe(subscriber_id=1, fitbit_id=fitbit_id)
 
-    if response.status_code == 200:
-        app.logger.warning(
-            f"User {fitbit_id=} already had an active webhook subscription."
-        )
-    elif response.status_code == 201:
+    if response.status_code == 201:
         app.logger.info(
             f"Successfully created webhook subscription for user {fitbit_id=}!"
         )
+    elif response.status_code == 200:
+        app.logger.warning(
+            f"User {fitbit_id=} already had an active webhook subscription."
+        )
     else:
         app.logger.error(
-            f"Something went wrong attempting to create a webhook subscription for user {fitbit_id=}!"
+            f"Something went wrong attempting to create a webhook subscription for user {fitbit_id=}! {response.status_code=}\nResponse content: {response.content}"
         )
         abort(401)
 
