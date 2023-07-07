@@ -217,6 +217,7 @@ def webhook_link():
             app.logger.debug("Received a valid notification from Fitbit.")
             app.logger.debug(request.data)
             messages = json.loads(request.data)
+
             # NOTE: Use a set to guarantee only one execution per user ID in the notification; A single notification can contain multiple messages related to same Fitbit ID.
             notification_ids = set(
                 message.get("ownerId")
@@ -224,6 +225,7 @@ def webhook_link():
                 if message.get("collectionType") == "activities"
                 and message.get("ownerType") == "user"
             )
+
             app.logger.debug(f"Message id set: {notification_ids=}.")
             for fitbit_id in notification_ids:
                 if fitbit_id is not None:
@@ -288,17 +290,17 @@ def fitbit_oauth_verify():
         "state"
     ] != session.get("oauth2_fitbit_state"):
         app.logger.error(
-            f"Unauthorized Access! Request sent state value of {request.args.get('state')} compared to session state value of {session.get('oauth2_fitbit_state')}"
+            f"Unauthorized access! Request sent state value of {request.args.get('state')} compared to session state value of {session.get('oauth2_fitbit_state')}"
         )
         abort(401)
 
     if session.get("pkce_code") is None:
-        app.logger.error("Unauthorized Access!  `pkce_code` is missing from session.")
+        app.logger.error("Unauthorized access!  `pkce_code` is missing from session.")
         abort(401)
 
     if "code" not in request.args:
         app.logger.error(
-            f"Unauthorized Access!  `code` parameter missing from Fitbit request arguments. Request arguments {request.args}"
+            f"Unauthorized access!  `code` parameter missing from Fitbit request arguments. Request arguments {request.args}"
         )
         abort(401)
 
@@ -337,23 +339,26 @@ def fitbit_oauth_verify():
     access_token = response.json().get("access_token")
     if not access_token:
         app.logger.error(
-            f"Unauthorized Access! `access_token` missing from Fitbit response.  Response content: {response.content}"
+            f"Unauthorized access! `access_token` missing from Fitbit response.  Response content: {response.content}"
         )
         abort(401)
 
     refresh_token = response.json().get("refresh_token")
     if not refresh_token:
         app.logger.error(
-            f"Unauthorized Access! `refresh_token` missing from Fitbit response.  Response content: {response.content}"
+            f"Unauthorized access! `refresh_token` missing from Fitbit response.  Response content: {response.content}"
         )
         abort(401)
 
     fitbit_id = response.json().get("user_id")
     if not fitbit_id:
         app.logger.error(
-            f"Unauthorized Access! `user_id` missing from Fitbit response.  Response content: {response.content}"
+            f"Unauthorized access! `user_id` missing from Fitbit response.  Response content: {response.content}"
         )
         abort(401)
+
+    # Store the fitbit_id in the session to enable to OAuth flow.
+    session["fitbit_id"] = fitbit_id
 
     # TODO: Check that user provided appropriate scope access
     app.logger.info(f"{fitbit_id=}, scope: {response.json().get('scope')}")
@@ -369,27 +374,32 @@ def fitbit_oauth_verify():
 
     update_fitbit_tokens(response.json(), fitbit_id=fitbit_id)
 
-    return redirect(url_for("strava_oauth", fitbit_id=fitbit_id))
+    return redirect(url_for("strava_oauth"))
 
 
-@app.route("/auth/strava/<fitbit_id>")
-def strava_oauth(fitbit_id):
+@app.route("/auth/strava")
+def strava_oauth():
     # Used to check that the request is coming from a redirect
     if session.get("oauth2_fitbit_state") is None:
         app.logger.error(
-            f"Unauthorized Access! `oauth2_fitbit_state` missing from session."
+            f"Unauthorized access! `oauth2_fitbit_state` missing from session."
         )
+        abort(401)
+
+    fitbit_id = session.get("fitbit_id")
+    if fitbit_id is None:
+        app.logger.error("Unauthorized access! `fitbit_id` missing from session.")
         abort(401)
 
     # Verify user is valid
     if not database_user_check(fitbit_id=fitbit_id):
         app.logger.error(
-            f"Unauthorized Access! User with {fitbit_id=} is not located in the database."
+            f"Unauthorized access! User with {fitbit_id=} is not located in the database."
         )
         abort(401)
 
     # Generate a new state token
-    session["oauth2_strava_state"] = f"{fitbit_id}_{secrets.token_urlsafe(20)}"
+    session["oauth2_strava_state"] = secrets.token_urlsafe(20)
     param_string = urlencode(
         {
             "client_id": os.getenv("STRAVA_CLIENT_ID"),
@@ -417,17 +427,21 @@ def strava_oauth_verify():
         "state"
     ] != session.get("oauth2_strava_state"):
         app.logger.error(
-            f"Unauthorized Access! Request sent state value of {request.args.get('state')} compared to session state value of {session.get('oauth2_strava_state')}"
+            f"Unauthorized access! Request sent state value of {request.args.get('state')} compared to session state value of {session.get('oauth2_strava_state')}"
         )
         abort(401)
 
     if "code" not in request.args:
         app.logger.error(
-            f"Unauthorized Access!  `code` parameter missing from Strava request arguments. Request arguments {request.args}"
+            f"Unauthorized access!  `code` parameter missing from Strava request arguments. Request arguments {request.args}"
         )
         abort(401)
 
-    fitbit_id, *_ = session.get("oauth2_strava_state").split("_")
+    fitbit_id = session.get("fitbit_id")
+    if fitbit_id is None:
+        app.logger.error("Unauthorized access! `fitbit_id` missing from session.")
+        abort(401)
+
     # Submit request for tokens
     ## Construct request parameters
     params = {
@@ -452,14 +466,14 @@ def strava_oauth_verify():
     access_token = response.json().get("access_token")
     if not access_token:
         app.logger.error(
-            f"Unauthorized Access! `access_token` missing from Strava response.  Response content: {response.content}"
+            f"Unauthorized access! `access_token` missing from Strava response.  Response content: {response.content}"
         )
         abort(401)
 
     refresh_token = response.json().get("refresh_token")
     if not refresh_token:
         app.logger.error(
-            f"Unauthorized Access! `refresh_token` missing from Strava response.  Response content: {response.content}"
+            f"Unauthorized access! `refresh_token` missing from Strava response.  Response content: {response.content}"
         )
         abort(401)
 
