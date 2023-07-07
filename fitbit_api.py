@@ -7,8 +7,11 @@ import requests
 
 from database_utils import get_db_connection
 
+Response = requests.models.Response
+Request = requests.models.Request
 
-def get_fitbit_access_token(fitbit_id):
+
+def get_fitbit_access_token(fitbit_id: str) -> str:
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -19,7 +22,7 @@ def get_fitbit_access_token(fitbit_id):
     return access_token
 
 
-def get_fitbit_refresh_token(fitbit_id):
+def get_fitbit_refresh_token(fitbit_id: str) -> str:
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -30,7 +33,7 @@ def get_fitbit_refresh_token(fitbit_id):
     return refresh_token
 
 
-def update_fitbit_tokens(token_data, fitbit_id):
+def update_fitbit_tokens(token_data: dict[str, str], fitbit_id: str) -> None:
     new_access_token = token_data["access_token"]
     new_refresh_token = token_data["refresh_token"]
     with get_db_connection() as conn:
@@ -42,7 +45,7 @@ def update_fitbit_tokens(token_data, fitbit_id):
         conn.commit()
 
 
-def fitbit_refresh_tokens(fitbit_id):
+def fitbit_refresh_tokens(fitbit_id: str) -> None:
     refresh_token = get_fitbit_refresh_token(fitbit_id)
     basic_token = base64.urlsafe_b64encode(
         f"{os.getenv('FITBIT_CLIENT_ID')}:{os.getenv('FITBIT_CLIENT_SECRET')}".encode()
@@ -71,8 +74,8 @@ def fitbit_refresh_tokens(fitbit_id):
         raise requests.exceptions.HTTPError(response)
 
 
-def fitbit_token_refresh_decorator(api_call):
-    def refresh_api_call(*args, **kwargs):
+def fitbit_token_refresh_decorator(api_call: function):
+    def refresh_api_call(*args, **kwargs) -> Response:
         response = api_call(*args, **kwargs)
 
         # Check if tokens need to be refreshed
@@ -89,7 +92,7 @@ def fitbit_token_refresh_decorator(api_call):
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_profile(*, fitbit_id):
+def get_fitbit_profile(*, fitbit_id: str) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = "https://api.fitbit.com/1/user/-/profile.json"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -98,7 +101,7 @@ def get_fitbit_profile(*, fitbit_id):
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_activity_tcx(log_id, *, fitbit_id):
+def get_fitbit_activity_tcx(log_id: int | str, *, fitbit_id: str) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/{log_id}.tcx"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -107,7 +110,9 @@ def get_fitbit_activity_tcx(log_id, *, fitbit_id):
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_activity_log(timedelta=7, limit=5, offset=0, sort="desc", *, fitbit_id):
+def get_fitbit_activity_log(
+    timedelta: int = 7, limit: int = 5, offset: int = 0, sort="desc", *, fitbit_id: str
+) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
@@ -124,7 +129,7 @@ def get_fitbit_activity_log(timedelta=7, limit=5, offset=0, sort="desc", *, fitb
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_most_recent_activity(*, fitbit_id):
+def get_fitbit_most_recent_activity(*, fitbit_id: str) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
@@ -141,7 +146,9 @@ def get_fitbit_most_recent_activity(*, fitbit_id):
 
 
 @fitbit_token_refresh_decorator
-def get_fitbit_activities_after_date(after_date, limit=100, offset=0, *, fitbit_id):
+def get_fitbit_activities_after_date(
+    after_date, limit: int = 100, offset: int = 0, *, fitbit_id: str
+) -> Response:
     """Submit an API request for the users activities after a specified date.
     The activities are returned sorted by date in ascending order.
 
@@ -175,18 +182,20 @@ def get_fitbit_activities_after_date(after_date, limit=100, offset=0, *, fitbit_
     return response
 
 
-def fitbit_validate_signature(request):
+def fitbit_validate_signature(request: Request) -> bool:
     """Follow the verification best practices as outlined in https://dev.fitbit.com/build/reference/web-api/developer-guide/best-practices/#Subscriber-Security
+
+    Checks the headers of the request to confirm the request originated from Fitbit.
 
     Parameters
     ----------
-    request : _type_
-        _description_
+    request : Request
+        An HTTP request sent to the server.
 
     Returns
     -------
     bool
-        Indicates if the request should be validated or not.
+        Indicates if the request has appropriately signed headers to indicate it originated from Fitbit.
     """
     body = request.data
     value = base64.b64encode(
@@ -200,7 +209,9 @@ def fitbit_validate_signature(request):
 
 
 @fitbit_token_refresh_decorator
-def fitbit_webhook_subscribe(subscriber_id, collection="activities", *, fitbit_id):
+def fitbit_webhook_subscribe(
+    subscriber_id: int | str, collection: str = "activities", *, fitbit_id: str
+) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/{collection}/apiSubscriptions/{subscriber_id}.json"
     headers = {"Authorization": f"Bearer {access_token}"}
