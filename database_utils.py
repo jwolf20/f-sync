@@ -22,7 +22,7 @@ def get_db_connection():
         db_connection_pool.putconn(conn)
 
 
-def database_user_check(fitbit_id):
+def database_user_check(fitbit_id: str) -> bool:
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -33,7 +33,7 @@ def database_user_check(fitbit_id):
             return result > 0
 
 
-def database_create_user(fitbit_id):
+def database_create_user(fitbit_id: str) -> bool:
     if not database_user_check(fitbit_id):
         # User does not yet exist and needs to be inserted
         with get_db_connection() as conn:

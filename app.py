@@ -57,7 +57,7 @@ app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY")
 celery = get_celery_app_instance(app)
 
 
-def process_activity(log_id, fitbit_id) -> bool:
+def process_activity(log_id: int | str, fitbit_id: str) -> bool:
     tcx_response = get_fitbit_activity_tcx(log_id, fitbit_id=fitbit_id)
     if tcx_response.status_code != 200:
         app.logger.error(
@@ -80,7 +80,7 @@ def process_activity(log_id, fitbit_id) -> bool:
 
 
 @celery.task
-def upload_latest_activities(fitbit_id):
+def upload_latest_activities(fitbit_id: str) -> None:
     app.logger.info(f"Attempting to upload new activities for {fitbit_id=}")
 
     # Look at the latest Fitbit activity
