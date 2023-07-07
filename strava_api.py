@@ -1,10 +1,13 @@
+import io
 import os
 import requests
 
 from database_utils import get_db_connection
 
+Response = requests.models.Response
 
-def get_strava_access_token(fitbit_id):
+
+def get_strava_access_token(fitbit_id: str) -> str:
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -15,7 +18,7 @@ def get_strava_access_token(fitbit_id):
     return access_token
 
 
-def get_strava_refresh_token(fitbit_id):
+def get_strava_refresh_token(fitbit_id: str) -> str:
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -26,7 +29,7 @@ def get_strava_refresh_token(fitbit_id):
     return refresh_token
 
 
-def update_strava_tokens(token_data, fitbit_id):
+def update_strava_tokens(token_data: dict[str, str], fitbit_id: str) -> None:
     new_access_token = token_data["access_token"]
     new_refresh_token = token_data["refresh_token"]
     with get_db_connection() as conn:
@@ -38,7 +41,7 @@ def update_strava_tokens(token_data, fitbit_id):
         conn.commit()
 
 
-def strava_refresh_tokens(fitbit_id):
+def strava_refresh_tokens(fitbit_id: str) -> None:
     refresh_token = get_strava_refresh_token(fitbit_id)
     params = {
         "grant_type": "refresh_token",
@@ -62,7 +65,7 @@ def strava_refresh_tokens(fitbit_id):
 
 
 def strava_token_refresh_decorator(api_call):
-    def refresh_api_call(*args, **kwargs):
+    def refresh_api_call(*args, **kwargs) -> Response:
         response = api_call(*args, **kwargs)
 
         # Check if tokens need to be refreshed
@@ -79,7 +82,7 @@ def strava_token_refresh_decorator(api_call):
 
 
 @strava_token_refresh_decorator
-def strava_activity_upload(file_buffer, *, fitbit_id):
+def strava_activity_upload(file_buffer: io.BytesIO, *, fitbit_id: str) -> Response:
     access_token = get_strava_access_token(fitbit_id)
     file_buffer.seek(0)
     url = "https://www.strava.com/api/v3/uploads"
@@ -93,7 +96,7 @@ def strava_activity_upload(file_buffer, *, fitbit_id):
 
 
 @strava_token_refresh_decorator
-def strava_check_upload_status(upload_id, *, fitbit_id):
+def strava_check_upload_status(upload_id: int | str, *, fitbit_id: str) -> Response:
     access_token = get_strava_access_token(fitbit_id)
     url = f"https://www.strava.com/api/v3/uploads/{upload_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -103,7 +106,7 @@ def strava_check_upload_status(upload_id, *, fitbit_id):
 
 
 @strava_token_refresh_decorator
-def strava_get_activity_list(*, fitbit_id):
+def strava_get_activity_list(*, fitbit_id: str) -> Response:
     access_token = get_strava_access_token(fitbit_id)
     url = "https://www.strava.com/api/v3/athlete/activities"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -113,7 +116,7 @@ def strava_get_activity_list(*, fitbit_id):
 
 
 @strava_token_refresh_decorator
-def get_strava_most_recent_activity(*, fitbit_id):
+def get_strava_most_recent_activity(*, fitbit_id: str) -> Response:
     access_token = get_strava_access_token(fitbit_id)
     url = "https://www.strava.com/api/v3/athlete/activities"
     headers = {"Authorization": f"Bearer {access_token}"}
