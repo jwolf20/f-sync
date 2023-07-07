@@ -210,7 +210,7 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/fitbit-notifications/", methods=["GET", "POST"])
+@app.route("/fitbit-notifications", methods=["GET", "POST"])
 def webhook_link():
     if request.method == "POST":
         if fitbit_validate_signature(request):
