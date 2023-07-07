@@ -212,6 +212,7 @@ def webhook_link():
                 if message.get("collectionType") == "activities"
                 and message.get("ownerType") == "user"
             )
+            app.logger.debug(f"Message id set: {notification_ids=}.")
             for fitbit_id in notification_ids:
                 if fitbit_id is not None:
                     upload_latest_activities.delay(fitbit_id=fitbit_id)
