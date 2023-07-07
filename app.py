@@ -61,7 +61,7 @@ def process_activity(log_id, fitbit_id) -> bool:
     tcx_response = get_fitbit_activity_tcx(log_id, fitbit_id=fitbit_id)
     if tcx_response.status_code != 200:
         app.logger.error(
-            f"Failed Response: {tcx_response.status_code=}\n{tcx_response.content}"
+            f"Unexpected response from Fitbit API: {tcx_response.status_code=}\n{tcx_response.content}"
         )
         return False
 
@@ -70,7 +70,7 @@ def process_activity(log_id, fitbit_id) -> bool:
 
     if upload_response.status_code != 201:
         app.logger.error(
-            f"Unexpected Response: {upload_response.status_code=}\n{upload_response.content}"
+            f"Unexpected response from Strava API: {upload_response.status_code=}\n{upload_response.content}"
         )
         return False
     app.logger.info(
@@ -99,12 +99,15 @@ def upload_latest_activities(fitbit_id):
     latest_fitbit_activity = fitbit_response.json()["activities"][0]
 
     # Check if the activity is more recent that the last successful upload by this application.
-    app.logger.debug("Connecting to database")
+    latest_fitbit_timestamp = datetime.datetime.fromisoformat(
+        latest_fitbit_activity["startTime"]
+    ).replace(tzinfo=None)
+    app.logger.debug(f"{latest_fitbit_timestamp=}")
+
+    app.logger.debug(
+        "Connecting to database to verify latest Fitbit activity has not already been seen and uploaded."
+    )
     with get_db_connection() as conn:
-        latest_fitbit_timestamp = datetime.datetime.fromisoformat(
-            latest_fitbit_activity["startTime"]
-        ).replace(tzinfo=None)
-        app.logger.debug(f"{latest_fitbit_timestamp=}")
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT fitbit_latest_activity_date FROM user_activity WHERE fitbit_id = %s",
@@ -119,78 +122,87 @@ def upload_latest_activities(fitbit_id):
                 )
                 return
 
-            # Check the most recent Strava activity
-            strava_response = get_strava_most_recent_activity(fitbit_id=fitbit_id)
-            if strava_response.status_code != 200:
-                app.logger.error(
-                    f"Unable to access Strava API for latest activity! User {fitbit_id=}, {strava_response.status_code=},\n {strava_response.content=}"
-                )
-                return
+    # Check the most recent Strava activity
+    strava_response = get_strava_most_recent_activity(fitbit_id=fitbit_id)
+    if strava_response.status_code != 200:
+        app.logger.error(
+            f"Unable to access Strava API for latest activity! User {fitbit_id=}, {strava_response.status_code=},\n {strava_response.content=}"
+        )
+        return
 
-            if len(strava_response.json()) == 0:
-                app.logger.warning(
-                    "No recent Strava activities found! Continuing use default date of 2010-01-01."
-                )
-                latest_strava_date = "2010-01-01"
-            else:
-                latest_strava_date = strava_response.json()[0]["start_date"].rstrip(
-                    "Z"
-                )  # NOTE: Strava timestamps include an extra Z character at the end.
+    # By default only look for activities from the last 3 days.  This is to prevent creating a large queue uploading potentially months or years worth of activities.
+    latest_strava_date = (
+        datetime.date.today() + datetime.timedelta(days=-3)
+    ).isoformat()
+    if len(strava_response.json()) == 0:
+        app.logger.warning(
+            f"No recent Strava activities found! Continuing with a default date value of {latest_strava_date}."
+        )
 
-            # Get the collection of Fitbit activities that occurred after the most recent Strava activity.
-            fitbit_activities_response = get_fitbit_activities_after_date(
-                latest_strava_date, fitbit_id=fitbit_id
+    else:
+        # Use the more recent timestamp between the default limit of the last 3 days and the most recent Strava activity.
+        # NOTE: Since the strings are stored in ISO 8601 format a string comparison can be used to determine the more recent timestamp.
+        latest_strava_date = max(
+            latest_strava_date,
+            strava_response.json()[0]["start_date"].rstrip(
+                "Z"
+            ),  # NOTE: Strava timestamps include an extra Z character at the end; this must be removed to prevent errors when parsing the timestamp.
+        )
+
+    app.logger.debug(f"Proceeding with {latest_strava_date=}")
+
+    # Get the collection of Fitbit activities that occurred after the most recent Strava activity.
+    fitbit_activities_response = get_fitbit_activities_after_date(
+        latest_strava_date, fitbit_id=fitbit_id
+    )
+
+    if fitbit_activities_response.status_code != 200:
+        app.logger.error(
+            f"Unable to access Fitbit API for recent activities! User {fitbit_id=}, {fitbit_activities_response.status_code=},\n {fitbit_activities_response.content=}"
+        )
+        return
+
+    successful_fitbit_upload_date = None
+
+    # Loop through the new activities attempting to upload them to Strava
+    for activity in fitbit_activities_response.json()["activities"]:
+        log_id = activity["logId"]
+        if activity["logType"] != "tracker":
+            app.logger.warning(
+                f"Encountered Fitbit activity that was not recorded by a tracker.  This is likely either a manual upload without GPS data or an auto-detected activity. Activity in question has {fitbit_id=}, {log_id=}."
             )
+            continue
 
-            if fitbit_activities_response.status_code != 200:
-                app.logger.error(
-                    f"Unable to access Fitbit API for recent activities! User {fitbit_id=}, {fitbit_activities_response.status_code=},\n {fitbit_activities_response.content=}"
-                )
-                return
+        if activity["activityName"].lower() not in (
+            "run",
+            "hike",
+            "bike",
+            "walk",
+        ):
+            app.logger.error(
+                f"Encountered Fitbit activity with unsupported Type: {activity['activityName']}. Activity in question has {fitbit_id=}, {log_id=}."
+            )
+            continue
 
-            successful_fitbit_upload_date = None
+        app.logger.info(f"Uploading an activity for user {fitbit_id=} with {log_id=}.")
+        upload_successful = process_activity(log_id=log_id, fitbit_id=fitbit_id)
+        app.logger.debug(f"{upload_successful=}")
 
-            # Loop through the new activities attempting to upload them to Strava
-            for activity in fitbit_activities_response.json()["activities"]:
-                log_id = activity["logId"]
-                if activity["logType"] != "tracker":
-                    app.logger.warning(
-                        f"Encountered Fitbit activity that was not recorded by a tracker.  This is likely either a manual upload without GPS data or an auto-detected activity. Activity in question has {fitbit_id=}, {log_id=}."
-                    )
-                    continue
+        if upload_successful:
+            successful_fitbit_upload_date = datetime.datetime.fromisoformat(
+                activity["startTime"]
+            ).replace(tzinfo=None)
 
-                if activity["activityName"].lower() not in (
-                    "run",
-                    "hike",
-                    "bike",
-                    "walk",
-                ):
-                    app.logger.error(
-                        f"Encountered Fitbit activity with unsupported Type: {activity['activityName']}. Activity in question has {fitbit_id=}, {log_id=}."
-                    )
-                    continue
-
-                app.logger.info(
-                    f"Uploading a new activity for user {fitbit_id=} with {log_id=}."
-                )
-                upload_successful = process_activity(log_id=log_id, fitbit_id=fitbit_id)
-                app.logger.debug(f"{upload_successful=}")
-
-                if upload_successful:
-                    successful_fitbit_upload_date = datetime.datetime.fromisoformat(
-                        activity["startTime"]
-                    ).replace(tzinfo=None)
-
-            # Update the database recording the new timestamp
-            if successful_fitbit_upload_date is not None:
-                app.logger.debug(
-                    f"Updating database activity records for {fitbit_id=}."
-                )
+    # Update the database recording the new timestamp
+    if successful_fitbit_upload_date is not None:
+        app.logger.debug(f"Updating database activity records for {fitbit_id=}.")
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE user_activity SET fitbit_latest_activity_date = %s WHERE fitbit_id = %s",
                     (latest_fitbit_timestamp, fitbit_id),
                 )
-                conn.commit()
+            conn.commit()
 
 
 @app.route("/")
