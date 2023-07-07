@@ -74,7 +74,7 @@ def fitbit_refresh_tokens(fitbit_id: str) -> None:
         raise requests.exceptions.HTTPError(response)
 
 
-def fitbit_token_refresh_decorator(api_call: function):
+def fitbit_token_refresh_decorator(api_call):
     def refresh_api_call(*args, **kwargs) -> Response:
         response = api_call(*args, **kwargs)
 
