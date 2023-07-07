@@ -207,7 +207,7 @@ def webhook_link():
             messages = json.loads(request.data)
             # NOTE: Use a set to guarantee only one execution per user ID in the notification; A single notification can contain multiple messages related to same Fitbit ID.
             notification_ids = set(
-                message.get("ownerID")
+                message.get("ownerId")
                 for message in messages
                 if message.get("collectionType") == "activities"
                 and message.get("ownerType") == "user"
