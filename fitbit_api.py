@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import os
 import requests
+from typing import Callable
 
 from database_utils import get_db_connection
 
@@ -74,7 +75,9 @@ def fitbit_refresh_tokens(fitbit_id: str) -> None:
         raise requests.exceptions.HTTPError(response)
 
 
-def fitbit_token_refresh_decorator(api_call):
+def fitbit_token_refresh_decorator(
+    api_call: Callable[..., Response]
+) -> Callable[..., Response]:
     def refresh_api_call(*args, **kwargs) -> Response:
         response = api_call(*args, **kwargs)
 
@@ -111,7 +114,12 @@ def get_fitbit_activity_tcx(log_id: int | str, *, fitbit_id: str) -> Response:
 
 @fitbit_token_refresh_decorator
 def get_fitbit_activity_log(
-    timedelta: int = 7, limit: int = 5, offset: int = 0, sort="desc", *, fitbit_id: str
+    timedelta: int = 7,
+    limit: int = 5,
+    offset: int = 0,
+    sort: str = "desc",
+    *,
+    fitbit_id: str,
 ) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/list.json"

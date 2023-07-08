@@ -1,6 +1,7 @@
 import io
 import os
 import requests
+from typing import Callable
 
 from database_utils import get_db_connection
 
@@ -8,6 +9,18 @@ Response = requests.models.Response
 
 
 def get_strava_access_token(fitbit_id: str) -> str:
+    """Returns the Strava API access token associated with the provided `fitbit_id` from the database.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+
+    Returns
+    -------
+    str
+        The requested access token.
+    """
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -19,6 +32,18 @@ def get_strava_access_token(fitbit_id: str) -> str:
 
 
 def get_strava_refresh_token(fitbit_id: str) -> str:
+    """Returns the Strava API refresh token associated with the provided `fitbit_id` from the database.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+
+    Returns
+    -------
+    str
+        The requested refresh token.
+    """
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -30,6 +55,15 @@ def get_strava_refresh_token(fitbit_id: str) -> str:
 
 
 def update_strava_tokens(token_data: dict[str, str], fitbit_id: str) -> None:
+    """Update the Strava access and refresh tokens for the provided `fitbit_id`.
+
+    Parameters
+    ----------
+    token_data : dict[str, str]
+        A dictionary containing the new "access_token" and "refresh_token" values.
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+    """
     new_access_token = token_data["access_token"]
     new_refresh_token = token_data["refresh_token"]
     with get_db_connection() as conn:
@@ -64,7 +98,9 @@ def strava_refresh_tokens(fitbit_id: str) -> None:
         raise requests.exceptions.HTTPError(response)
 
 
-def strava_token_refresh_decorator(api_call):
+def strava_token_refresh_decorator(
+    api_call: Callable[..., Response]
+) -> Callable[..., Response]:
     def refresh_api_call(*args, **kwargs) -> Response:
         response = api_call(*args, **kwargs)
 
