@@ -13,6 +13,18 @@ Request = requests.models.Request
 
 
 def get_fitbit_access_token(fitbit_id: str) -> str:
+    """Returns the Fitbit API access token associated with the provided `fitbit_id` from the database.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+
+    Returns
+    -------
+    str
+        The requested access token.
+    """
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -24,6 +36,18 @@ def get_fitbit_access_token(fitbit_id: str) -> str:
 
 
 def get_fitbit_refresh_token(fitbit_id: str) -> str:
+    """Returns the Fitbit API refresh token associated with the provided `fitbit_id` from the database.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+
+    Returns
+    -------
+    str
+        The requested refresh token.
+    """
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -35,6 +59,16 @@ def get_fitbit_refresh_token(fitbit_id: str) -> str:
 
 
 def update_fitbit_tokens(token_data: dict[str, str], fitbit_id: str) -> None:
+    """Update the Fitbit access and refresh tokens for the provided `fitbit_id`
+    within the database.
+
+    Parameters
+    ----------
+    token_data : dict[str, str]
+        A dictionary containing the new "access_token" and "refresh_token" values.
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+    """
     new_access_token = token_data["access_token"]
     new_refresh_token = token_data["refresh_token"]
     with get_db_connection() as conn:
@@ -47,6 +81,21 @@ def update_fitbit_tokens(token_data: dict[str, str], fitbit_id: str) -> None:
 
 
 def fitbit_refresh_tokens(fitbit_id: str) -> None:
+    """Consume the Fitbit refresh_token associated with the given `fitbit_id` to generate a new pair
+    of access and refresh tokens.
+
+    An additional function call is made to store the new values in the database.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+
+    Raises
+    ------
+    requests.exceptions.HTTPError
+        This is raised when the request to the API is unsuccessful.
+    """
     refresh_token = get_fitbit_refresh_token(fitbit_id)
     basic_token = base64.urlsafe_b64encode(
         f"{os.getenv('FITBIT_CLIENT_ID')}:{os.getenv('FITBIT_CLIENT_SECRET')}".encode()
@@ -78,6 +127,26 @@ def fitbit_refresh_tokens(fitbit_id: str) -> None:
 def fitbit_token_refresh_decorator(
     api_call: Callable[..., Response]
 ) -> Callable[..., Response]:
+    """A decorator that is useful for API calls.  In the event that an API call returns a
+    response code indicating the that access token has expired and needs to be refreshed.
+    This decorator will execute the call to refresh the access token and then attempt to
+    execute the API call again after the tokens have been refreshed.
+
+    If the original API request does not return a response indicating that the access token
+    needs to be refreshed, then no action is taken.
+
+    Parameters
+    ----------
+    api_call : Callable[..., Response]
+        The function making an API call.  This function MUST contain
+        `fitbit_id` as a keyword argument.  In order to be able to perform
+        the action of refreshing the tokens.
+
+    Returns
+    -------
+    Callable[..., Response]
+    """
+
     def refresh_api_call(*args, **kwargs) -> Response:
         response = api_call(*args, **kwargs)
 
@@ -96,6 +165,18 @@ def fitbit_token_refresh_decorator(
 
 @fitbit_token_refresh_decorator
 def get_fitbit_profile(*, fitbit_id: str) -> Response:
+    """Submit an API request for the Fitbit profile corresponding to the given `fitbit_id`.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_fitbit_access_token(fitbit_id)
     url = "https://api.fitbit.com/1/user/-/profile.json"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -105,6 +186,20 @@ def get_fitbit_profile(*, fitbit_id: str) -> Response:
 
 @fitbit_token_refresh_decorator
 def get_fitbit_activity_tcx(log_id: int | str, *, fitbit_id: str) -> Response:
+    """Submit an API request to get the .tcx data for a user activity.
+
+    Parameters
+    ----------
+    log_id : int | str
+        The log_id of the requested activity.
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/{log_id}.tcx"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -121,6 +216,28 @@ def get_fitbit_activity_log(
     *,
     fitbit_id: str,
 ) -> Response:
+    """Submit an API request for the a list of Fitbit activities for a user.
+    This request will look for activities that occur BEFORE the provided date.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+    timedelta : int, optional
+        Indicates the value for the beforeDate parameter as a difference in days from the current date, by default 7
+    limit : int, optional
+        Limits the number of activities returned (maximum allowed value of 100), by default 5
+    offset : int, optional
+        Used for pagination of results, by default 0
+    sort : str, optional
+        Indicating the sorted order of the results (by timestamp).
+        Use "desc" for descending order or "asc" for ascending order., by default "desc"
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
@@ -138,6 +255,18 @@ def get_fitbit_activity_log(
 
 @fitbit_token_refresh_decorator
 def get_fitbit_most_recent_activity(*, fitbit_id: str) -> Response:
+    """Submit an API request for the information related to a users most recent activity.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
@@ -166,7 +295,7 @@ def get_fitbit_activities_after_date(
         Must be a string in yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss format.  The yyyy-MM-dd portion is required, however the timestamp version
         can be used to filter results using finer granularity.
     fitbit_id : str
-        The Fitbit ID for the user related to this request.
+        The Fitbit Id for the user related to this request.
     limit : int, optional
         The number of activities returned (max value: 100), by default 100
     offset : int, optional
@@ -174,8 +303,8 @@ def get_fitbit_activities_after_date(
 
     Returns
     -------
-    _type_
-        _description_
+    Response
+        The HTTP response from the API.
     """
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/list.json"
@@ -220,6 +349,25 @@ def fitbit_validate_signature(request: Request) -> bool:
 def fitbit_webhook_subscribe(
     subscriber_id: int | str, collection: str = "activities", *, fitbit_id: str
 ) -> Response:
+    """Submit an API request to register a webhook subscription for a user / collection to the subscriber
+     endpoint specified by the provided `subscriber_id` as determined by the application configuration.
+
+     See https://dev.fitbit.com/build/reference/web-api/developer-guide/using-subscriptions/#Subscribers for more details.
+
+    Parameters
+    ----------
+    subscriber_id : int | str
+        An id associated with the application's subscription endpoint.
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+    collection : str, optional
+        The name for the data collection(s) that should be sent to this endpoint, by default "activities"
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/{collection}/apiSubscriptions/{subscriber_id}.json"
     headers = {"Authorization": f"Bearer {access_token}"}

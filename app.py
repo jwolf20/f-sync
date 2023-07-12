@@ -58,6 +58,21 @@ celery = get_celery_app_instance(app)
 
 
 def process_activity(log_id: int | str, fitbit_id: str) -> bool:
+    """Pulls the .tcx for the Fitbit activity with the given `log_id` and uploads
+    the activity file to the associated Strava account.
+
+    Parameters
+    ----------
+    log_id : int | str
+        The Fitbit log_id of the activity being uploaded.
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    bool
+        Indicates if the upload request was successful.
+    """
     tcx_response = get_fitbit_activity_tcx(log_id, fitbit_id=fitbit_id)
     if tcx_response.status_code != 200:
         app.logger.error(
@@ -81,6 +96,21 @@ def process_activity(log_id: int | str, fitbit_id: str) -> bool:
 
 @celery.task
 def upload_latest_activities(fitbit_id: str) -> None:
+    """Uploads recent Fitbit activities to Strava.
+
+    In this function recent refers to any Fitbit activities that occurred AFTER the latest activity that is already
+    present on the users associated Strava account (limited to Fitbit activities recorded within the last 3 days to avoid submitting a large number
+    of activities for infrequent Strava users).
+
+    In order to verify that the request is not a duplicate of a previous request the timestamp of the most recent Fitbit
+    activity is compared to the timestamp of the latest Fitbit activity that was successfully uploaded for this user by
+    this application (based on the information in the user_activity table of the database).
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+    """
     app.logger.info(f"Attempting to upload new activities for {fitbit_id=}")
 
     # Look at the latest Fitbit activity

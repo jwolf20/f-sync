@@ -55,7 +55,8 @@ def get_strava_refresh_token(fitbit_id: str) -> str:
 
 
 def update_strava_tokens(token_data: dict[str, str], fitbit_id: str) -> None:
-    """Update the Strava access and refresh tokens for the provided `fitbit_id`.
+    """Update the Strava access and refresh tokens for the provided `fitbit_id`
+    within the database.
 
     Parameters
     ----------
@@ -76,6 +77,21 @@ def update_strava_tokens(token_data: dict[str, str], fitbit_id: str) -> None:
 
 
 def strava_refresh_tokens(fitbit_id: str) -> None:
+    """Consume the Strava refresh_token associated with the given `fitbit_id` to generate a new pair
+    of access and refresh tokens.
+
+    An additional function call is made to store the new values in the database.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The primary key value for the user_tokens table.
+
+    Raises
+    ------
+    requests.exceptions.HTTPError
+        This is raised when the request to the API is unsuccessful.
+    """
     refresh_token = get_strava_refresh_token(fitbit_id)
     params = {
         "grant_type": "refresh_token",
@@ -101,6 +117,26 @@ def strava_refresh_tokens(fitbit_id: str) -> None:
 def strava_token_refresh_decorator(
     api_call: Callable[..., Response]
 ) -> Callable[..., Response]:
+    """A decorator that is useful for API calls.  In the event that an API call returns a
+    response code indicating the that access token has expired and needs to be refreshed.
+    This decorator will execute the call to refresh the access token and then attempt to
+    execute the API call again after the tokens have been refreshed.
+
+    If the original API request does not return a response indicating that the access token
+    needs to be refreshed, then no action is taken.
+
+    Parameters
+    ----------
+    api_call : Callable[..., Response]
+        The function making an API call.  This function MUST contain
+        `fitbit_id` as a keyword argument.  In order to be able to perform
+        the action of refreshing the tokens.
+
+    Returns
+    -------
+    Callable[..., Response]
+    """
+
     def refresh_api_call(*args, **kwargs) -> Response:
         response = api_call(*args, **kwargs)
 
@@ -119,6 +155,21 @@ def strava_token_refresh_decorator(
 
 @strava_token_refresh_decorator
 def strava_activity_upload(file_buffer: io.BytesIO, *, fitbit_id: str) -> Response:
+    """Submit an API request to upload the .tcx file data from the `file_buffer` as
+    a Strava activity.
+
+    Parameters
+    ----------
+    file_buffer : io.BytesIO
+        A file buffer for the .tcx activity file being uploaded.
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_strava_access_token(fitbit_id)
     file_buffer.seek(0)
     url = "https://www.strava.com/api/v3/uploads"
@@ -133,6 +184,21 @@ def strava_activity_upload(file_buffer: io.BytesIO, *, fitbit_id: str) -> Respon
 
 @strava_token_refresh_decorator
 def strava_check_upload_status(upload_id: int | str, *, fitbit_id: str) -> Response:
+    """Submit an API request to check the status of an activity that has been
+    uploaded to Strava.
+
+    Parameters
+    ----------
+    upload_id : int | str
+        The upload id for the activity.
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_strava_access_token(fitbit_id)
     url = f"https://www.strava.com/api/v3/uploads/{upload_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -143,6 +209,21 @@ def strava_check_upload_status(upload_id: int | str, *, fitbit_id: str) -> Respo
 
 @strava_token_refresh_decorator
 def strava_get_activity_list(*, fitbit_id: str) -> Response:
+    """Submit an API request to get a list of recent Strava activities
+    for the user.
+
+    The activities are sorted in descending order by activity date.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_strava_access_token(fitbit_id)
     url = "https://www.strava.com/api/v3/athlete/activities"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -153,6 +234,19 @@ def strava_get_activity_list(*, fitbit_id: str) -> Response:
 
 @strava_token_refresh_decorator
 def get_strava_most_recent_activity(*, fitbit_id: str) -> Response:
+    """Submit an API request to get the most recent Strava activity
+    for the user.
+
+    Parameters
+    ----------
+    fitbit_id : str
+        The Fitbit Id for the user related to this request.
+
+    Returns
+    -------
+    Response
+        The HTTP response from the API.
+    """
     access_token = get_strava_access_token(fitbit_id)
     url = "https://www.strava.com/api/v3/athlete/activities"
     headers = {"Authorization": f"Bearer {access_token}"}
