@@ -1,8 +1,6 @@
 from contextlib import contextmanager
 import os
-from typing import Generator
 
-import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 
 db_connection_pool = ThreadedConnectionPool(
@@ -16,7 +14,7 @@ db_connection_pool = ThreadedConnectionPool(
 
 
 @contextmanager
-def get_db_connection() -> Generator[psycopg2.connection, None, None]:
+def get_db_connection():
     """Used to serve up connections to the PostgreSQL database.
 
     The connections are provided from a ThreadedConnectionPool.
