@@ -201,12 +201,20 @@ def upload_latest_activities(fitbit_id: str) -> None:
             app.logger.warning(
                 f"Encountered Fitbit activity that was not recorded by a tracker.  This is likely either a manual upload without GPS data or an auto-detected activity. Activity in question has {fitbit_id=}, {log_id=}."
             )
+            # NOTE: The date is updated to prevent repeated processing of an activity of this type from subsequent notifications.
+            successful_fitbit_upload_date = datetime.datetime.fromisoformat(
+                activity["startTime"]
+            ).replace(tzinfo=None)
             continue
 
         if "GPS" not in activity["source"]["trackerFeatures"]:
             app.logger.error(
                 f"Encountered Fitbit activity that does not contain GPS data: {activity['activityName']=} {activity['source']['trackerFeatures']=}. Activity in question has {fitbit_id=}, {log_id=}."
             )
+            # NOTE: The date is updated to prevent repeated processing of an activity of this type from subsequent notifications.
+            successful_fitbit_upload_date = datetime.datetime.fromisoformat(
+                activity["startTime"]
+            ).replace(tzinfo=None)
             continue
 
         app.logger.info(f"Uploading an activity for user {fitbit_id=} with {log_id=}.")
