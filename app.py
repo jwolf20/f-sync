@@ -174,7 +174,7 @@ def upload_latest_activities(fitbit_id: str) -> None:
         # NOTE: Since the strings are stored in ISO 8601 format a string comparison can be used to determine the more recent timestamp.
         latest_strava_date = max(
             latest_strava_date,
-            strava_response.json()[0]["start_date"].rstrip(
+            strava_response.json()[0]["start_date_local"].rstrip(
                 "Z"
             ),  # NOTE: Strava timestamps include an extra Z character at the end; this must be removed to prevent errors when parsing the timestamp.
         )
