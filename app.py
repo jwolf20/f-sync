@@ -203,14 +203,9 @@ def upload_latest_activities(fitbit_id: str) -> None:
             )
             continue
 
-        if activity["activityName"].lower() not in (
-            "run",
-            "hike",
-            "bike",
-            "walk",
-        ):
+        if "GPS" not in activity["source"]["trackerFeatures"]:
             app.logger.error(
-                f"Encountered Fitbit activity with unsupported Type: {activity['activityName']}. Activity in question has {fitbit_id=}, {log_id=}."
+                f"Encountered Fitbit activity that does not contain GPS data: {activity['activityName']=} {activity['source']['trackerFeatures']=}. Activity in question has {fitbit_id=}, {log_id=}."
             )
             continue
 
