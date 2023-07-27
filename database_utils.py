@@ -1,3 +1,7 @@
+"""Utility functions for interacting with a Postgres database.
+This contains both general functions as well as some functions
+related to the specific schema used within this application.
+"""
 from contextlib import contextmanager
 import os
 
@@ -58,9 +62,11 @@ def database_user_check(fitbit_id: str) -> bool:
 def database_create_user(fitbit_id: str) -> bool:
     """Adds a user to the database using the provided `fitbit_id`.
 
-    There is a check to see if the user is already present in the database.  If the user is present then no further action database action is taken.
+    There is a check to see if the user is already present in the database.
+    If the user is present then no further action database action is taken.
 
-    If the user is not present then the given `fitbit_id` is added to both the user_tokens and user_activity tables.
+    If the user is not present then the given `fitbit_id` is added
+    to both the user_tokens and user_activity tables.
 
     Parameters
     ----------
@@ -86,5 +92,4 @@ def database_create_user(fitbit_id: str) -> bool:
                 )
             conn.commit()
         return True
-    else:
-        return False
+    return False

@@ -1,15 +1,20 @@
+"""Contains code used for interacting with the Strava API.  For more details
+about what information / endpoints are available via the Strava API see
+https://developers.strava.com/docs/reference/
+"""
 import io
 import os
-import requests
 from typing import Callable
+
+import requests
+from requests.models import Response
 
 from database_utils import get_db_connection
 
-Response = requests.models.Response
-
 
 def get_strava_access_token(fitbit_id: str) -> str:
-    """Returns the Strava API access token associated with the provided `fitbit_id` from the database.
+    """Returns the Strava API access token associated with
+    the provided `fitbit_id` from the database.
 
     Parameters
     ----------
@@ -32,7 +37,8 @@ def get_strava_access_token(fitbit_id: str) -> str:
 
 
 def get_strava_refresh_token(fitbit_id: str) -> str:
-    """Returns the Strava API refresh token associated with the provided `fitbit_id` from the database.
+    """Returns the Strava API refresh token associated with
+    the provided `fitbit_id` from the database.
 
     Parameters
     ----------
@@ -101,7 +107,7 @@ def strava_refresh_tokens(fitbit_id: str) -> None:
     }
 
     response = requests.post(
-        url="https://www.strava.com/api/v3/oauth/token", params=params
+        url="https://www.strava.com/api/v3/oauth/token", params=params, timeout=10
     )
 
     # Store the new tokens
@@ -177,7 +183,9 @@ def strava_activity_upload(file_buffer: io.BytesIO, *, fitbit_id: str) -> Respon
     params = {"data_type": "tcx"}
     files = {"file": file_buffer}
 
-    response = requests.post(url=url, headers=headers, files=files, params=params)
+    response = requests.post(
+        url=url, headers=headers, files=files, params=params, timeout=10
+    )
 
     return response
 
@@ -202,7 +210,7 @@ def strava_check_upload_status(upload_id: int | str, *, fitbit_id: str) -> Respo
     access_token = get_strava_access_token(fitbit_id)
     url = f"https://www.strava.com/api/v3/uploads/{upload_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url=url, headers=headers)
+    response = requests.get(url=url, headers=headers, timeout=10)
 
     return response
 
@@ -227,7 +235,7 @@ def strava_get_activity_list(*, fitbit_id: str) -> Response:
     access_token = get_strava_access_token(fitbit_id)
     url = "https://www.strava.com/api/v3/athlete/activities"
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url=url, headers=headers)
+    response = requests.get(url=url, headers=headers, timeout=10)
 
     return response
 
@@ -253,6 +261,6 @@ def get_strava_most_recent_activity(*, fitbit_id: str) -> Response:
     params = {
         "per_page": 1,
     }
-    response = requests.get(url=url, headers=headers, params=params)
+    response = requests.get(url=url, headers=headers, params=params, timeout=10)
 
     return response

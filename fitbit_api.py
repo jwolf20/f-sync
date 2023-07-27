@@ -1,19 +1,23 @@
+"""Contains code used for interacting with the Fitbit API.  For more details
+about what information / endpoints are available via the Fitbit API see
+https://dev.fitbit.com/build/reference/web-api/
+"""
 import base64
 import datetime
 import hashlib
 import hmac
 import os
-import requests
 from typing import Callable
+
+import requests
+from requests.models import Request, Response
 
 from database_utils import get_db_connection
 
-Response = requests.models.Response
-Request = requests.models.Request
-
 
 def get_fitbit_access_token(fitbit_id: str) -> str:
-    """Returns the Fitbit API access token associated with the provided `fitbit_id` from the database.
+    """Returns the Fitbit API access token associated with
+    the provided `fitbit_id` from the database.
 
     Parameters
     ----------
@@ -36,7 +40,8 @@ def get_fitbit_access_token(fitbit_id: str) -> str:
 
 
 def get_fitbit_refresh_token(fitbit_id: str) -> str:
-    """Returns the Fitbit API refresh token associated with the provided `fitbit_id` from the database.
+    """Returns the Fitbit API refresh token associated with
+    the provided `fitbit_id` from the database.
 
     Parameters
     ----------
@@ -111,7 +116,10 @@ def fitbit_refresh_tokens(fitbit_id: str) -> None:
     }
 
     response = requests.post(
-        url="https://api.fitbit.com/oauth2/token", params=params, headers=headers
+        url="https://api.fitbit.com/oauth2/token",
+        params=params,
+        headers=headers,
+        timeout=10,
     )
 
     # Store the new tokens
@@ -180,7 +188,7 @@ def get_fitbit_profile(*, fitbit_id: str) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = "https://api.fitbit.com/1/user/-/profile.json"
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url=url, headers=headers)
+    response = requests.get(url=url, headers=headers, timeout=10)
     return response
 
 
@@ -203,7 +211,7 @@ def get_fitbit_activity_tcx(log_id: int | str, *, fitbit_id: str) -> Response:
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/activities/{log_id}.tcx"
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url=url, headers=headers)
+    response = requests.get(url=url, headers=headers, timeout=10)
     return response
 
 
@@ -224,7 +232,7 @@ def get_fitbit_activity_log(
     fitbit_id : str
         The Fitbit Id for the user related to this request.
     timedelta : int, optional
-        Indicates the value for the beforeDate parameter as a difference in days from the current date, by default 7
+        The number of days to look back from the current date, by default 7
     limit : int, optional
         Limits the number of activities returned (maximum allowed value of 100), by default 5
     offset : int, optional
@@ -239,7 +247,7 @@ def get_fitbit_activity_log(
         The HTTP response from the API.
     """
     access_token = get_fitbit_access_token(fitbit_id)
-    url = f"https://api.fitbit.com/1/user/-/activities/list.json"
+    url = "https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
         "beforeDate": (
             datetime.date.today() + datetime.timedelta(days=timedelta)
@@ -249,7 +257,7 @@ def get_fitbit_activity_log(
         "sort": sort,
     }
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url=url, headers=headers, params=params)
+    response = requests.get(url=url, headers=headers, params=params, timeout=10)
     return response
 
 
@@ -268,17 +276,17 @@ def get_fitbit_most_recent_activity(*, fitbit_id: str) -> Response:
         The HTTP response from the API.
     """
     access_token = get_fitbit_access_token(fitbit_id)
-    url = f"https://api.fitbit.com/1/user/-/activities/list.json"
+    url = "https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
         "beforeDate": (
             datetime.date.today() + datetime.timedelta(days=5)
-        ).isoformat(),  # NOTE: Using a date that is after today in order to make sure we are provided the most recent activity.
+        ).isoformat(),  # NOTE: Using a future date to ensure the latest activity is returned.
         "limit": 1,
         "offset": 0,
         "sort": "desc",
     }
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url=url, headers=headers, params=params)
+    response = requests.get(url=url, headers=headers, params=params, timeout=10)
     return response
 
 
@@ -292,7 +300,8 @@ def get_fitbit_activities_after_date(
     Parameters
     ----------
     after_date : str
-        Must be a string in yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss format.  The yyyy-MM-dd portion is required, however the timestamp version
+        Must be a string in yyyy-MM-dd or yyyy-MM-ddTHH:mm:ss format.
+        The yyyy-MM-dd portion is required, however the timestamp version
         can be used to filter results using finer granularity.
     fitbit_id : str
         The Fitbit Id for the user related to this request.
@@ -307,7 +316,7 @@ def get_fitbit_activities_after_date(
         The HTTP response from the API.
     """
     access_token = get_fitbit_access_token(fitbit_id)
-    url = f"https://api.fitbit.com/1/user/-/activities/list.json"
+    url = "https://api.fitbit.com/1/user/-/activities/list.json"
     params = {
         "afterDate": after_date,
         "limit": limit,
@@ -315,12 +324,13 @@ def get_fitbit_activities_after_date(
         "sort": "asc",
     }
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url=url, headers=headers, params=params)
+    response = requests.get(url=url, headers=headers, params=params, timeout=10)
     return response
 
 
 def fitbit_validate_signature(request: Request) -> bool:
-    """Follow the verification best practices as outlined in https://dev.fitbit.com/build/reference/web-api/developer-guide/best-practices/#Subscriber-Security
+    """Follow the verification best practices as outlined at
+    https://dev.fitbit.com/build/reference/web-api/developer-guide/best-practices/#Subscriber-Security
 
     Checks the headers of the request to confirm the request originated from Fitbit.
 
@@ -332,7 +342,7 @@ def fitbit_validate_signature(request: Request) -> bool:
     Returns
     -------
     bool
-        Indicates if the request has appropriately signed headers to indicate it originated from Fitbit.
+        Determines if the request contains proper headers for originating from Fitbit.
     """
     body = request.data
     value = base64.b64encode(
@@ -349,10 +359,12 @@ def fitbit_validate_signature(request: Request) -> bool:
 def fitbit_webhook_subscribe(
     subscriber_id: int | str, collection: str = "activities", *, fitbit_id: str
 ) -> Response:
-    """Submit an API request to register a webhook subscription for a user / collection to the subscriber
-     endpoint specified by the provided `subscriber_id` as determined by the application configuration.
+    """Submit an API request to register a webhook subscription for a user / collection
+    to the subscriber endpoint specified by the provided `subscriber_id` as determined
+    by the application configuration.
 
-     See https://dev.fitbit.com/build/reference/web-api/developer-guide/using-subscriptions/#Subscribers for more details.
+    For more details see:
+    https://dev.fitbit.com/build/reference/web-api/developer-guide/using-subscriptions/#Subscribers
 
     Parameters
     ----------
@@ -361,7 +373,7 @@ def fitbit_webhook_subscribe(
     fitbit_id : str
         The Fitbit Id for the user related to this request.
     collection : str, optional
-        The name for the data collection(s) that should be sent to this endpoint, by default "activities"
+        The name for the data collection(s) being sent to this endpoint, by default "activities"
 
     Returns
     -------
@@ -371,5 +383,5 @@ def fitbit_webhook_subscribe(
     access_token = get_fitbit_access_token(fitbit_id)
     url = f"https://api.fitbit.com/1/user/-/{collection}/apiSubscriptions/{subscriber_id}.json"
     headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.post(url=url, headers=headers)
+    response = requests.post(url=url, headers=headers, timeout=10)
     return response

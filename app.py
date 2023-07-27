@@ -98,13 +98,15 @@ def process_activity(log_id: int | str, fitbit_id: str) -> bool:
 def upload_latest_activities(fitbit_id: str) -> None:
     """Uploads recent Fitbit activities to Strava.
 
-    In this function recent refers to any Fitbit activities that occurred AFTER the latest activity that is already
-    present on the users associated Strava account (limited to Fitbit activities recorded within the last 3 days to avoid submitting a large number
+    In this function recent refers to any Fitbit activities that occurred AFTER the latest
+    activity that is already present on the users associated Strava account (limited to
+    Fitbit activities recorded within the last 3 days to avoid submitting a large number
     of activities for infrequent Strava users).
 
-    In order to verify that the request is not a duplicate of a previous request the timestamp of the most recent Fitbit
-    activity is compared to the timestamp of the latest Fitbit activity that was successfully uploaded for this user by
-    this application (based on the information in the user_activity table of the database).
+    In order to verify that the request is not a duplicate of a previous request the timestamp of
+    the most recent Fitbit activity is compared to the timestamp of the latest Fitbit activity that
+    was successfully uploaded for this user by this application (based on the information in the
+    user_activity table of the database).
 
     Parameters
     ----------
@@ -264,30 +266,33 @@ def webhook_link():
                 if fitbit_id is not None:
                     upload_latest_activities.delay(fitbit_id=fitbit_id)
             return "Success", 204
-        else:
-            app.logger.warning(
-                f"Bad request:\nHeaders: {request.headers}\nData: {request.data}"
-            )
-            return "Bad Request", 400
 
-    else:
+        app.logger.warning(
+            f"Bad request:\nHeaders: {request.headers}\nData: {request.data}"
+        )
+        return "Bad Request", 400
+
+    elif request.method == "GET":
         verification_code = request.args.get("verify")
         if verification_code == os.getenv("FITBIT_SUBSCRIPTION_VERIFICATION_CODE"):
             app.logger.info(f"Successful verification of {verification_code}")
             return "Success", 204
-        else:
-            return "Failure", 404
+
+    return "Failure", 404
 
 
 # OAUTH section
 # This section contains the code necessary to interact with Oauth allowing users to register for the application.
 @app.route("/auth/success")
 def auth_success():
+    """Displayed upon success of the registration process."""
     return render_template("auth_success.html")
 
 
 @app.route("/auth/fitbit")
 def fitbit_oauth():
+    """Generates the OAuth2 request for Fitbit access."""
+
     session["pkce_code"] = secrets.token_urlsafe(90)
     code_challenge = (
         base64.urlsafe_b64encode(hashlib.sha256(session["pkce_code"].encode()).digest())
@@ -312,6 +317,8 @@ def fitbit_oauth():
 
 @app.route("/auth_verify/fitbit")
 def fitbit_oauth_verify():
+    """Verifies the OAuth2 information for Fitbit access."""
+
     # Verify the redirect has required information
     if "error" in request.args:
         for k, v in request.args.items():
@@ -359,7 +366,10 @@ def fitbit_oauth_verify():
 
     ## Submit request
     response = requests.post(
-        url="https://api.fitbit.com/oauth2/token", params=params, headers=headers
+        url="https://api.fitbit.com/oauth2/token",
+        params=params,
+        headers=headers,
+        timeout=10,
     )
 
     # Verify request is successful
@@ -412,10 +422,12 @@ def fitbit_oauth_verify():
 
 @app.route("/auth/strava")
 def strava_oauth():
+    """Generates the OAuth2 request for Strava access."""
+
     # Used to check that the request is coming from a redirect
     if session.get("oauth2_fitbit_state") is None:
         app.logger.error(
-            f"Unauthorized access! `oauth2_fitbit_state` missing from session."
+            "Unauthorized access! `oauth2_fitbit_state` missing from session."
         )
         abort(401)
 
@@ -449,6 +461,8 @@ def strava_oauth():
 
 @app.route("/auth_verify/strava")
 def strava_oauth_verify():
+    """Verifies the OAuth2 information for Strava access."""
+
     # Verify the redirect has required information
     if "error" in request.args:
         for k, v in request.args.items():
@@ -486,7 +500,7 @@ def strava_oauth_verify():
 
     ## Submit request
     response = requests.post(
-        url="https://www.strava.com/api/v3/oauth/token", params=params
+        url="https://www.strava.com/api/v3/oauth/token", params=params, timeout=10
     )
 
     # Verify request is successful
